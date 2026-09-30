@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.github.badfisher.ailog.persistence.ai.mapper.AiLogManagementOperationMapper">
+
+    <select id="selectLatestByRequestId" useCache="false" flushCache="true"
+            resultType="io.github.badfisher.ailog.persistence.ai.entity.AiLogManagementOperationEntity">
+        SELECT id,
+               request_id,
+               actor,
+               actor_user_id,
+               operation_type,
+               environment,
+               system_code,
+               module_code,
+               target_id,
+               request_hash,
+               expected_revision,
+               result_revision,
+               source_item_id,
+               reason,
+               status,
+               total_count,
+               completed_count,
+               success_count,
+               failed_count,
+               execution_token,
+               lease_until,
+               result_json,
+               target_snapshot_json,
+               new_ai_task_id,
+               new_ai_item_id,
+               create_time,
+               update_time,
+               finish_time
+        FROM tb_ai_log_management_operation
+        WHERE request_id = #{requestId}
+    </select>
+
+    <select id="lockActiveRerunExecution" resultType="long">
+        SELECT id
+        FROM tb_ai_log_management_operation
+        WHERE id = #{operationId}
+          AND status = 'RUNNING'
+          AND execution_token = #{executionToken}
+          AND lease_until &gt; #{now}
+        FOR UPDATE
+    </select>
+
+    <select id="selectRunningRerunByTaskForUpdate" useCache="false" flushCache="true"
+            resultType="io.github.badfisher.ailog.persistence.ai.entity.AiLogManagementOperationEntity">
+        SELECT id,
+               request_id,
+               actor,
+               actor_user_id,
+               operation_type,
+               target_id,
+               source_item_id,
+               status,
+               total_count,
+               completed_count,
+               success_count,
+               failed_count,
+               execution_token,
+               lease_until,
+               result_json,
+               target_snapshot_json,
+               create_time,
+               update_time,
+               finish_time
+        FROM tb_ai_log_management_operation
+        WHERE target_id = #{taskId}
+          AND operation_type IN ('AI_GROUP_RERUN','AI_TASK_RERUN')
+          AND status = 'RUNNING'
+        ORDER BY id DESC
+        LIMIT 1
+        FOR UPDATE
+    </select>
+
+    <update id="claimRerunExecution">
+        UPDATE tb_ai_log_management_operation operation
+        SET operation.execution_token = #{executionToken},
+            operation.lease_until = #{leaseUntil},
+            operation.update_time = #{now}
+        WHERE operation.id = #{operationId}
+          AND operation.status = 'RUNNING'
+          AND (operation.execution_token IS NULL OR operation.lease_until &lt; #{now})
+          AND NOT EXISTS (
+              SELECT 1
+              FROM tb_ai_log_ai_task_item item
+              WHERE item.rerun_operation_id = operation.id
+                AND item.rerun_status = 'RUNNING'
+                AND item.lease_until IS NOT NULL
+                AND item.lease_until &gt;= #{now}
+          )
+    </update>
+
+    <update id="renewRerunExecution">
+        UPDATE tb_ai_log_management_operation
+        SET lease_until = #{leaseUntil},
+            update_time = #{now}
+        WHERE id = #{operationId}
+          AND status = 'RUNNING'
+          AND execution_token = #{executionToken}
+    </update>
+
+    <update id="refreshRerunProgress">
+        UPDATE tb_ai_log_management_operation operation
+        LEFT JOIN (
+            SELECT rerun_operation_id,
+                   SUM(CASE WHEN rerun_status IN ('SUCCESS','FAILED') THEN 1 ELSE 0 END)
+                       AS completed_count,
+                   SUM(CASE WHEN rerun_status = 'SUCCESS' THEN 1 ELSE 0 END)
+                       AS success_count,
+                   SUM(CASE WHEN rerun_status = 'FAILED' THEN 1 ELSE 0 END)
+                       AS failed_count
+            FROM tb_ai_log_ai_task_item
+            WHERE rerun_operation_id = #{operationId}
+            GROUP BY rerun_operation_id
+        ) progress ON progress.rerun_operation_id = operation.id
+        SET operation.completed_count = COALESCE(progress.completed_count, 0),
+            operation.success_count = COALESCE(progress.success_count, 0),
+            operation.failed_count = COALESCE(progress.failed_count, 0),
+            operation.update_time = #{now}
+        WHERE operation.id = #{operationId}
+          AND operation.status = 'RUNNING'
+          AND operation.execution_token = #{executionToken}
+    </update>
+
+    <update id="finishRerunOperation">
+        UPDATE tb_ai_log_management_operation operation
+        SET operation.status = CASE WHEN operation.failed_count &gt; 0
+                                    THEN 'FAILED' ELSE 'SUCCESS' END,
+            operation.result_json = #{resultJson},
+            operation.execution_token = NULL,
+            operation.lease_until = NULL,
+            operation.finish_time = #{now},
+            operation.update_time = #{now}
+        WHERE operation.id = #{operationId}
+          AND operation.status = 'RUNNING'
+          AND operation.execution_token = #{executionToken}
+          AND operation.completed_count = operation.total_count
+          AND NOT EXISTS (
+              SELECT 1
+              FROM tb_ai_log_ai_task_item item
+              WHERE item.rerun_operation_id = operation.id
+                AND item.rerun_status IN ('WAITING','RUNNING')
+          )
+    </update>
+
+    <update id="failRerunBeforeExecution">
+        UPDATE tb_ai_log_management_operation
+        SET status = 'FAILED',
+            result_json = #{resultJson},
+            execution_token = NULL,
+            lease_until = NULL,
+            finish_time = #{now},
+            update_time = #{now}
+        WHERE id = #{operationId}
+          AND status = 'RUNNING'
+          AND execution_token IS NULL
+    </update>
+
+    <update id="failInterruptedRerun">
+        UPDATE tb_ai_log_management_operation operation
+        SET operation.status = 'FAILED',
+            operation.result_json = #{resultJson},
+            operation.execution_token = NULL,
+            operation.lease_until = NULL,
+            operation.finish_time = #{now},
+            operation.update_time = #{now}
+        WHERE operation.id = #{operationId}
+          AND operation.status = 'RUNNING'
+          AND operation.execution_token = #{executionToken}
+          AND NOT EXISTS (
+              SELECT 1
+              FROM tb_ai_log_ai_task_item item
+              WHERE item.rerun_operation_id = operation.id
+                AND item.rerun_status = 'RUNNING'
+          )
+    </update>
+
+    <update id="releaseRerunForRecovery">
+        UPDATE tb_ai_log_management_operation
+        SET execution_token = NULL,
+            lease_until = #{now},
+            result_json = #{resultJson},
+            update_time = #{now}
+        WHERE id = #{operationId}
+          AND status = 'RUNNING'
+          AND execution_token = #{executionToken}
+    </update>
+
+    <select id="selectRecoverableRerunOperationIds" resultType="long">
+        SELECT operation.id
+        FROM tb_ai_log_management_operation operation
+        WHERE operation.operation_type IN ('AI_GROUP_RERUN','AI_TASK_RERUN')
+          AND operation.status = 'RUNNING'
+          AND (operation.execution_token IS NULL OR operation.lease_until &lt; #{now})
+          AND NOT EXISTS (
+              SELECT 1
+              FROM tb_ai_log_ai_task_item item
+              WHERE item.rerun_operation_id = operation.id
+                AND item.rerun_status = 'RUNNING'
+                AND item.lease_until IS NOT NULL
+                AND item.lease_until &gt;= #{now}
+          )
+        ORDER BY operation.id ASC
+        LIMIT #{limit}
+    </select>
+</mapper>

@@ -1,0 +1,20 @@
+# Copy to application-local.yml. Supply the hash from PasswordHashTool via environment.
+badfisher:
+  security:
+    accounts:
+      - id: 1
+        username: admin
+        password-hash: ${ADMIN_PASSWORD_HASH}
+        admin: true
+  sync:
+    # 必须是本机已存在的绝对路径。Compose 容器中使用 /logs。
+    allowed-log-roots:
+      - ${LOG_ALLOWED_ROOT}
+    business-packages:
+      - com.example
+    error-file-patterns:
+      - '*error*.log'
+      - '*error*.log.*'
+    info-file-patterns:
+      - '*info*.log'
+      - '*info*.log.*'

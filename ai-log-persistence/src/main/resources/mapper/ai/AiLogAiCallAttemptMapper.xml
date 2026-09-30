@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.github.badfisher.ailog.persistence.ai.mapper.AiLogAiCallAttemptMapper">
+
+    <update id="finishSuccess">
+        UPDATE tb_ai_log_ai_call_attempt
+        SET status = 'SUCCESS',
+            actual_model = #{result.model},
+            provider_request_id = #{result.providerRequestId},
+            response_payload = #{result.rawResponse},
+            finish_reason = #{result.finishReason},
+            input_tokens = #{result.inputTokens},
+            output_tokens = #{result.outputTokens},
+            total_tokens = #{result.totalTokens},
+            latency_millis = #{latencyMillis},
+            retryable = 0,
+            finish_time = #{now},
+            update_time = #{now}
+        WHERE id = #{attemptId}
+          AND status = 'RUNNING'
+    </update>
+
+    <update id="finishFailure">
+        UPDATE tb_ai_log_ai_call_attempt
+        SET status = 'FAILED',
+            actual_model = #{failure.actualModel},
+            provider_request_id = #{failure.providerRequestId},
+            response_payload = #{failure.rawResponse},
+            finish_reason = #{failure.finishReason},
+            input_tokens = #{failure.inputTokens},
+            output_tokens = #{failure.outputTokens},
+            total_tokens = #{failure.totalTokens},
+            latency_millis = #{latencyMillis},
+            error_type = #{failure.errorType},
+            error_code = #{failure.errorCode},
+            error_message = #{failure.errorMessage},
+            retryable = #{failure.retryable},
+            finish_time = #{now},
+            update_time = #{now}
+        WHERE id = #{attemptId}
+          AND status = 'RUNNING'
+    </update>
+
+    <update id="failExpiredRunningAttempts">
+        UPDATE tb_ai_log_ai_call_attempt attempt
+        JOIN tb_ai_log_ai_task_item item ON item.id = attempt.ai_task_item_id
+        SET attempt.status = 'FAILED',
+            attempt.error_type = 'WORKER_LOST',
+            attempt.error_code = 'WORKER_LOST',
+            attempt.error_message = 'AI worker lease expired before completion',
+            attempt.retryable = 0,
+            attempt.finish_time = #{now},
+            attempt.update_time = #{now}
+        WHERE attempt.status = 'RUNNING'
+          AND attempt.rerun_operation_id IS NULL
+          AND item.status = 'RUNNING'
+          AND item.rerun_status IS NULL
+          AND item.lease_until IS NOT NULL
+          AND item.lease_until &lt; #{now}
+    </update>
+
+    <update id="failExpiredRerunAttempts">
+        UPDATE tb_ai_log_ai_call_attempt attempt
+        JOIN tb_ai_log_ai_task_item item ON item.id = attempt.ai_task_item_id
+        SET attempt.status = 'FAILED',
+            attempt.error_type = 'RERUN_WORKER_LOST',
+            attempt.error_code = 'RERUN_WORKER_LOST',
+            attempt.error_message = 'AI rerun worker lease expired before completion',
+            attempt.retryable = 0,
+            attempt.finish_time = #{now},
+            attempt.update_time = #{now}
+        WHERE attempt.status = 'RUNNING'
+          AND attempt.rerun_operation_id = #{operationId}
+          AND item.rerun_operation_id = #{operationId}
+          AND item.rerun_status = 'RUNNING'
+          AND item.lease_until IS NOT NULL
+          AND item.lease_until &lt; #{now}
+    </update>
+</mapper>

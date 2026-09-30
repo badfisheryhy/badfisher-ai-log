@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.github.badfisher.ailog.persistence.analysis.mapper.AiLogClassifyRuleMapper">
+
+    <!-- 显式列映射，不依赖全局 map-underscore-to-camel-case 配置。 -->
+    <resultMap id="ManagementResultMap"
+            type="io.github.badfisher.ailog.persistence.analysis.entity.AiLogClassifyRuleEntity">
+        <id column="id" property="id"/>
+        <result column="analysis_module" property="analysisModule"/>
+        <result column="category" property="category"/>
+        <result column="rule_type" property="ruleType"/>
+        <result column="match_target" property="matchTarget"/>
+        <result column="pattern" property="pattern"/>
+        <result column="priority" property="priority"/>
+        <result column="enabled" property="enabled"/>
+        <result column="expected" property="expected"/>
+        <result column="ai_required" property="aiRequired"/>
+        <result column="reason_code" property="reasonCode"/>
+        <result column="remark" property="remark"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="create_user_id" property="createUserId"/>
+        <result column="create_user_name" property="createUserName"/>
+        <result column="update_user_id" property="updateUserId"/>
+        <result column="update_user_name" property="updateUserName"/>
+        <result column="lock_version" property="lockVersion"/>
+    </resultMap>
+
+    <sql id="managementColumns">
+        id,
+        analysis_module,
+        category,
+        rule_type,
+        match_target,
+        pattern,
+        priority,
+        enabled,
+        expected,
+        ai_required,
+        reason_code,
+        remark,
+        create_time,
+        update_time,
+        create_user_id,
+        create_user_name,
+        update_user_id,
+        update_user_name,
+        lock_version
+    </sql>
+
+    <select id="selectManagementList" resultMap="ManagementResultMap">
+        SELECT
+        <include refid="managementColumns"/>
+        FROM tb_ai_log_classify_rule
+        <where>
+            <if test="analysisModule != null and analysisModule != ''">
+                analysis_module = #{analysisModule}
+            </if>
+            <if test="category != null and category != ''">
+                AND category = #{category}
+            </if>
+            <if test="ruleType != null and ruleType != ''">
+                AND rule_type = #{ruleType}
+            </if>
+            <if test="enabled != null">
+                AND enabled = #{enabled}
+            </if>
+        </where>
+        ORDER BY analysis_module ASC, priority ASC, id ASC
+    </select>
+
+    <select id="selectManagementById" resultMap="ManagementResultMap">
+        SELECT
+        <include refid="managementColumns"/>
+        FROM tb_ai_log_classify_rule
+        WHERE id = #{id}
+    </select>
+
+    <select id="selectManagementByUniqueKey" resultMap="ManagementResultMap">
+        SELECT
+        <include refid="managementColumns"/>
+        FROM tb_ai_log_classify_rule
+        WHERE analysis_module = #{analysisModule}
+          AND rule_type = #{ruleType}
+          AND pattern = #{pattern}
+        <if test="lockForUpdate">
+            FOR UPDATE
+        </if>
+    </select>
+
+    <update id="updateManagement">
+        UPDATE tb_ai_log_classify_rule
+        SET analysis_module = #{analysisModule},
+            category = #{category},
+            rule_type = #{ruleType},
+            match_target = #{matchTarget},
+            pattern = #{pattern},
+            priority = #{priority},
+            enabled = #{enabled},
+            expected = #{expected},
+            ai_required = #{aiRequired},
+            reason_code = #{reasonCode},
+            remark = #{remark},
+            update_user_id = #{updateUserId},
+            update_user_name = #{updateUserName},
+            update_time = CURRENT_TIMESTAMP,
+            lock_version = lock_version + 1
+        WHERE id = #{id}
+          AND lock_version = #{lockVersion}
+    </update>
+
+    <update id="updateEnabled">
+        UPDATE tb_ai_log_classify_rule
+        SET enabled = #{enabled},
+            update_user_id = #{updateUserId},
+            update_user_name = #{updateUserName},
+            update_time = CURRENT_TIMESTAMP,
+            lock_version = lock_version + 1
+        WHERE id = #{id}
+          AND lock_version = #{lockVersion}
+    </update>
+
+    <!-- 查询同一分析模块下指定原因编码的已启用规则，用于聚合一致性校验。 -->
+    <select id="selectEnabledByModuleAndReasonCode" resultMap="ManagementResultMap">
+        SELECT
+        <include refid="managementColumns"/>
+        FROM tb_ai_log_classify_rule
+        WHERE analysis_module = #{analysisModule}
+          AND reason_code = #{reasonCode}
+          AND enabled = 1
+    </select>
+</mapper>

@@ -1,0 +1,73 @@
+server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  port: ${SERVER_PORT:8080}
+spring:
+  application:
+    name: badfisher-ai-log
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/badfisher_ai_log?useUnicode=true&characterEncoding=UTF-8&serverTimezone=UTC}
+    username: ${DB_USERNAME:badfisher}
+    password: ${DB_PASSWORD:}
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+badfisher:
+  timezone: ${LOG_TIMEZONE:Asia/Shanghai}
+  management:
+    enabled: true
+  sync:
+    enabled: false
+    lock-mode: LOCAL
+    allowed-log-roots: []
+    manual-sync-denied-environments:
+      - prod
+      - production
+    root-directory: ${LOG_ROOT:./runtime-data/logs}
+    scripts-directory: ./runtime-data/scripts
+    business-packages: ${BUSINESS_PACKAGES:com.example}
+    error-file-patterns:
+      - '*error*.log'
+      - '*error*.log.*'
+    info-file-patterns:
+      - '*info*.log'
+      - '*info*.log.*'
+  info-context:
+    enabled: true
+    max-events: 20
+    max-characters: 8192
+    window-seconds: 120
+    max-files: 20
+    max-scanned-bytes: 67108864
+  security:
+    accounts: []
+  ai:
+    enabled: ${AI_ENABLED:false}
+    default-provider: openai
+    default-model: ${OPENAI_MODEL:}
+    providers:
+      openai:
+        base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+        api-key: ${OPENAI_API_KEY:}
+        allow-insecure-http: false
+        connect-timeout-seconds: 10
+        read-timeout-seconds: 60
+        max-attempts: 3
+    function-calling:
+      enabled: false
+  git-sync:
+    allow-insecure-http: false
+    workspace: ./runtime-data/source
+  dingtalk:
+    enabled: false
+aliyun:
+  oss:
+    enable: false

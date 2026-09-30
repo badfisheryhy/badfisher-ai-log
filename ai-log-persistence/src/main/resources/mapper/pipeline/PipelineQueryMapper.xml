@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.github.badfisher.ailog.persistence.pipeline.PipelineQueryMapper">
+
+    <select id="findAnalyses" resultType="io.github.badfisher.ailog.domain.pipeline.PipelineTaskViews$AnalysisTask">
+        SELECT
+            id, task_no, file_record_id, sync_task_id,
+            sync_module_task_id, environment, system_code, module_code,
+            log_date, status, fingerprint_version, raw_event_count,
+            strict_error_count, fallback_error_count, rejected_event_count, suppressed_error_count,
+            discarded_unknown_count, persisted_error_count, issue_count, retry_count,
+            start_time, finish_time, heartbeat_time, error_message,
+            create_time, update_time
+        FROM tb_ai_log_analysis_task
+        <where>
+            <if test="beforeId > 0">
+                AND id &lt; #{beforeId}
+            </if>
+        </where>
+        ORDER BY id DESC
+        LIMIT 100
+    </select>
+
+    <select id="findAiTasks" resultType="io.github.badfisher.ailog.domain.pipeline.PipelineTaskViews$AiTask">
+        SELECT
+            id, task_no, analysis_task_id, environment,
+            system_code, module_code, provider_code, model_code,
+            run_no, selection_limit, candidate_count, total_count,
+            status, preparation_complete, success_count, failed_count,
+            total_attempt_count, total_token_count, delivery_status, delivery_token,
+            delivery_attempt_count, report_object_key, delivery_error_message, delivery_start_time,
+            delivered_time, start_time, finish_time, create_time,
+            update_time
+        FROM tb_ai_log_ai_task
+        <where>
+            <if test="beforeId > 0">
+                AND id &lt; #{beforeId}
+            </if>
+        </where>
+        ORDER BY id DESC
+        LIMIT 100
+    </select>
+
+    <select id="findItems" resultType="io.github.badfisher.ailog.domain.pipeline.PipelineTaskViews$AiItem">
+        SELECT
+            id, ai_task_id, analysis_task_id, issue_group_id,
+            sample_event_id, selection_order, occurrence_count_snapshot, first_occurred_at_snapshot,
+            last_occurred_at_snapshot, status, attempt_count, max_attempts,
+            final_attempt_no, next_retry_time, claim_token, lease_owner,
+            lease_until, evidence_hash, evidence_snapshot_json, blame_author_name,
+            blame_author_time, judgement, severity, ai_category,
+            result_title, result_summary, analysis_basis, root_cause,
+            impact_description, recommendation, suggested_resolution_days, verification,
+            uncertainty, rule_suggestion, confidence, human_review_required,
+            result_hash, input_token_count, output_token_count, total_token_count,
+            total_latency_millis, last_error_code, last_error_message, rerun_operation_id,
+            rerun_status, rerun_execution_token, started_time, finish_time,
+            create_time, update_time
+        FROM tb_ai_log_ai_task_item
+        <where>
+            ai_task_id = #{taskId}
+            <if test="beforeId > 0">
+                AND id &lt; #{beforeId}
+            </if>
+        </where>
+        ORDER BY id DESC
+        LIMIT 100
+    </select>
+
+    <select id="findAttempts" resultType="io.github.badfisher.ailog.domain.pipeline.PipelineTaskViews$AiAttempt">
+        SELECT
+            id, ai_task_item_id, rerun_operation_id, attempt_no,
+            request_id, provider_code, requested_model, actual_model,
+            provider_request_id, request_mode, request_hash, status,
+            response_payload, http_status, finish_reason, input_tokens,
+            output_tokens, total_tokens, latency_millis, error_type,
+            error_code, error_message, retryable, start_time,
+            finish_time, create_time, update_time
+        FROM tb_ai_log_ai_call_attempt
+        <where>
+            ai_task_item_id = #{itemId}
+            <if test="beforeId > 0">
+                AND id &lt; #{beforeId}
+            </if>
+        </where>
+        ORDER BY id DESC
+        LIMIT 100
+    </select>
+</mapper>

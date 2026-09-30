@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.github.badfisher.ailog.persistence.query.GroupQueryMapper">
+    <!-- 从模块配置小表限定启用范围，完整模块身份和治理记录均有唯一约束。 -->
+    <sql id="enabledGroups">
+        FROM tb_ai_log_module_config config
+        INNER JOIN tb_ai_log_issue_group g
+            ON g.environment = config.environment
+            AND g.system_code = config.system_code
+            AND g.module_code = config.module_code
+            AND config.enabled = 1
+    </sql>
+
+    <!-- 模块与治理条件在分页前生效；Event/AI 用 EXISTS 筛选，避免一对多关联重复计数。 -->
+    <sql id="scope">
+        <include refid="enabledGroups"/>
+        JOIN tb_ai_log_issue_group_governance v ON v.issue_group_id = g.id
+        <where>
+            <if test="filter.environment != null">AND config.environment = #{filter.environment}</if>
+            <if test="filter.systemCode != null">AND config.system_code = #{filter.systemCode}</if>
+            <if test="filter.moduleCode != null">AND config.module_code = #{filter.moduleCode}</if>
+            <if test="filter.workbenchUserId != null">
+                AND (v.owner_user_id IS NULL OR v.owner_user_id = #{filter.workbenchUserId})
+            </if>
+            <if test="filter.ownerUserId != null">AND v.owner_user_id = #{filter.ownerUserId}</if>
+            <if test="filter.problemType != null">AND v.problem_type = #{filter.problemType}</if>
+            <if test="filter.problemLevel != null">AND v.problem_level = #{filter.problemLevel}</if>
+            <if test="filter.reviewStatus != null">AND v.review_status = #{filter.reviewStatus}</if>
+            <if test="filter.processStatus != null">AND v.process_status = #{filter.processStatus}</if>
+            <if test="filter.reviewerUserId != null">AND v.reviewer_user_id = #{filter.reviewerUserId}</if>
+            <if test="filter.startLogDate != null or filter.endLogDate != null">
+                AND EXISTS (
+                    SELECT 1 FROM tb_ai_log_error_event e
+                    WHERE e.issue_group_id = g.id
+                    <if test="filter.startLogDate != null">AND e.log_date &gt;= #{filter.startLogDate}</if>
+                    <if test="filter.endLogDate != null">AND e.log_date &lt;= #{filter.endLogDate}</if>
+                )
+            </if>
+            <if test="filter.keyword != null">
+                AND EXISTS (
+                    SELECT 1 FROM tb_ai_log_ai_task_item i
+                    WHERE i.id = g.current_ai_item_id AND i.status = 'SUCCESS'
+                      AND (LOCATE(#{filter.keyword}, i.result_title) &gt; 0
+                           OR LOCATE(#{filter.keyword}, i.result_summary) &gt; 0)
+                )
+            </if>
+        </where>
+    </sql>
+
+    <select id="count" resultType="long">
+        SELECT COUNT(*)
+        <include refid="scope"/>
+    </select>
+
+    <select id="summary" resultType="io.github.badfisher.ailog.persistence.query.GroupQueryData$Summary">
+        SELECT COUNT(*) AS total,
+               COALESCE(SUM(CASE WHEN v.review_status = 'PENDING' THEN 1 ELSE 0 END), 0) AS pending_review,
+               COALESCE(SUM(CASE WHEN v.review_status = 'REJECTED' THEN 1 ELSE 0 END), 0) AS rejected_review,
+               COALESCE(SUM(CASE WHEN v.review_status = 'APPROVED'
+                   AND v.process_status = 'PENDING' AND v.owner_user_id IS NULL
+                   THEN 1 ELSE 0 END), 0) AS pending_assign,
+               COALESCE(SUM(CASE WHEN v.process_status = 'PROCESSING' THEN 1 ELSE 0 END), 0) AS processing,
+               COALESCE(SUM(CASE WHEN v.process_status = 'RESOLVED' THEN 1 ELSE 0 END), 0) AS resolved,
+               COALESCE(SUM(CASE WHEN v.process_status = 'COMPLETED' THEN 1 ELSE 0 END), 0) AS completed,
+               COALESCE(SUM(CASE WHEN v.process_status = 'IGNORED' THEN 1 ELSE 0 END), 0) AS ignored
+        <include refid="scope"/>
+    </select>
+
+    <select id="page" resultType="io.github.badfisher.ailog.persistence.analysis.entity.AiLogIssueGroupEntity">
+        SELECT g.*
+        <include refid="scope"/>
+        ORDER BY g.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="detail" resultType="io.github.badfisher.ailog.persistence.analysis.entity.AiLogIssueGroupEntity">
+        SELECT g.*
+        <include refid="enabledGroups"/>
+        WHERE g.id = #{issueGroupId}
+    </select>
+
+    <select id="governance" resultType="io.github.badfisher.ailog.persistence.analysis.entity.AiLogIssueGroupGovernanceEntity">
+        SELECT * FROM tb_ai_log_issue_group_governance
+        WHERE issue_group_id IN
+        <foreach collection="groupIds" item="id" open="(" close=")" separator=",">#{id}</foreach>
+    </select>
+
+    <!-- 列表只读取展示字段，根因、分析依据等长文本留到详情查询。 -->
+    <select id="currentResultSummaries" resultType="io.github.badfisher.ailog.persistence.ai.entity.AiLogAiTaskItemEntity">
+        SELECT id, severity, ai_category, result_title, result_summary, blame_author_name
+        FROM tb_ai_log_ai_task_item
+        WHERE status = 'SUCCESS' AND id IN
+        <foreach collection="itemIds" item="id" open="(" close=")" separator=",">#{id}</foreach>
+    </select>
+
+    <select id="currentResults" resultType="io.github.badfisher.ailog.persistence.ai.entity.AiLogAiTaskItemEntity">
+        SELECT id, sample_event_id, judgement, severity, ai_category, result_title, result_summary,
+               root_cause, analysis_basis, impact_description, recommendation, suggested_resolution_days,
+               confidence, verification, uncertainty, blame_author_name, finish_time
+        FROM tb_ai_log_ai_task_item
+        WHERE status = 'SUCCESS' AND id IN
+        <foreach collection="itemIds" item="id" open="(" close=")" separator=",">#{id}</foreach>
+    </select>
+
+    <select id="eventStats" resultType="io.github.badfisher.ailog.persistence.query.GroupQueryData$EventStats">
+        SELECT issue_group_id, COALESCE(SUM(occurrence_count), 0) AS occurrence_count,
+               MIN(first_seen_time) AS first_occurred_at, MAX(last_seen_time) AS last_occurred_at,
+        <choose>
+            <when test="logDate != null">
+               SUM(CASE WHEN log_date = #{logDate} THEN occurrence_count ELSE 0 END)
+            </when>
+            <otherwise>NULL</otherwise>
+        </choose> AS date_occurrence_count
+        FROM tb_ai_log_error_event
+        WHERE issue_group_id IN
+        <foreach collection="groupIds" item="id" open="(" close=")" separator=",">#{id}</foreach>
+        GROUP BY issue_group_id
+    </select>
+
+    <select id="eventCount" resultType="long">
+        SELECT COUNT(*) FROM tb_ai_log_error_event WHERE issue_group_id = #{issueGroupId}
+    </select>
+
+    <select id="events" resultType="io.github.badfisher.ailog.persistence.analysis.entity.AiLogErrorEventEntity">
+        SELECT id, issue_group_id, analysis_task_id, file_record_id, log_date, occurrence_count,
+               first_seen_time, last_seen_time, sample_content, sample_content_truncated,
+               exception_class, exception_message, root_cause_exception, root_cause_message,
+               normalized_message, simplified_stack, trace_id, tid, request_id,
+               reason_code, root_cause_category, matched_rule_id, expected, ai_required
+        FROM tb_ai_log_error_event WHERE issue_group_id = #{issueGroupId}
+        ORDER BY log_date DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="modules" resultType="io.github.badfisher.ailog.persistence.query.GroupQueryData$ModuleOption">
+        SELECT environment, system_code, module_code FROM tb_ai_log_module_config
+        WHERE enabled = 1
+        ORDER BY environment, system_code, module_code
+    </select>
+
+</mapper>

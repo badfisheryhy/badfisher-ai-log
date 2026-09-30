@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.github.badfisher.ailog.persistence.config.mapper.AiLogModuleConfigMapper">
+
+    <!-- 显式列映射，不依赖全局 map-underscore-to-camel-case 配置。 -->
+    <resultMap id="ManagementResultMap"
+            type="io.github.badfisher.ailog.persistence.config.entity.AiLogModuleConfigEntity">
+        <id column="id" property="id"/>
+        <result column="environment" property="environment"/>
+        <result column="system_code" property="systemCode"/>
+        <result column="module_code" property="moduleCode"/>
+        <result column="enabled" property="enabled"/>
+        <result column="server_host" property="serverHost"/>
+        <result column="server_port" property="serverPort"/>
+        <result column="ssh_username" property="sshUsername"/>
+        <result column="credential_ref" property="credentialRef"/>
+        <result column="remote_directory" property="remoteDirectory"/>
+        <result column="log_file_prefix" property="logFilePrefix"/>
+        <result column="sync_error_log" property="syncErrorLog"/>
+        <result column="sync_all_log" property="syncAllLog"/>
+        <result column="local_sub_directory" property="localSubDirectory"/>
+        <result column="parser_profile" property="parserProfile"/>
+        <result column="analysis_module" property="analysisModule"/>
+        <result column="code_sync_enabled" property="codeSyncEnabled"/>
+        <result column="git_repository_url" property="gitRepositoryUrl"/>
+        <result column="git_branch" property="gitBranch"/>
+        <result column="sync_priority" property="syncPriority"/>
+        <result column="remark" property="remark"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="create_user_id" property="createUserId"/>
+        <result column="create_user_name" property="createUserName"/>
+        <result column="update_user_id" property="updateUserId"/>
+        <result column="update_user_name" property="updateUserName"/>
+        <result column="lock_version" property="lockVersion"/>
+    </resultMap>
+
+    <sql id="managementColumns">
+        id,
+        environment,
+        system_code,
+        module_code,
+        enabled,
+        server_host,
+        server_port,
+        ssh_username,
+        credential_ref,
+        remote_directory,
+        log_file_prefix,
+        sync_error_log,
+        sync_all_log,
+        local_sub_directory,
+        parser_profile,
+        analysis_module,
+        code_sync_enabled,
+        git_repository_url,
+        git_branch,
+        sync_priority,
+        remark,
+        create_time,
+        update_time,
+        create_user_id,
+        create_user_name,
+        update_user_id,
+        update_user_name,
+        lock_version
+    </sql>
+
+    <select id="selectManagementList" resultMap="ManagementResultMap">
+        SELECT
+        <include refid="managementColumns"/>
+        FROM tb_ai_log_module_config
+        <where>
+            <if test="environment != null and environment != ''">
+                environment = #{environment}
+            </if>
+            <if test="systemCode != null and systemCode != ''">
+                AND system_code = #{systemCode}
+            </if>
+            <if test="moduleCode != null and moduleCode != ''">
+                AND module_code = #{moduleCode}
+            </if>
+            <if test="enabled != null">
+                AND enabled = #{enabled}
+            </if>
+        </where>
+        ORDER BY environment ASC, system_code ASC, sync_priority ASC, id ASC
+    </select>
+
+    <select id="selectManagementById" resultMap="ManagementResultMap">
+        SELECT
+        <include refid="managementColumns"/>
+        FROM tb_ai_log_module_config
+        WHERE id = #{id}
+    </select>
+
+    <select id="selectManagementByIdentity" resultMap="ManagementResultMap">
+        SELECT
+        <include refid="managementColumns"/>
+        FROM tb_ai_log_module_config
+        WHERE environment = #{environment}
+          AND system_code = #{systemCode}
+          AND module_code = #{moduleCode}
+        <if test="lockForUpdate">
+            FOR UPDATE
+        </if>
+    </select>
+
+    <update id="updateManagement">
+        UPDATE tb_ai_log_module_config
+        SET enabled = #{enabled},
+            server_host = #{serverHost},
+            server_port = #{serverPort},
+            ssh_username = #{sshUsername},
+            credential_ref = #{credentialRef},
+            remote_directory = #{remoteDirectory},
+            log_file_prefix = #{logFilePrefix},
+            sync_error_log = #{syncErrorLog},
+            sync_all_log = #{syncAllLog},
+            local_sub_directory = #{localSubDirectory},
+            parser_profile = #{parserProfile},
+            analysis_module = #{analysisModule},
+            code_sync_enabled = #{codeSyncEnabled},
+            git_repository_url = #{gitRepositoryUrl},
+            git_branch = #{gitBranch},
+            sync_priority = #{syncPriority},
+            remark = #{remark},
+            update_user_id = #{updateUserId},
+            update_user_name = #{updateUserName},
+            update_time = CURRENT_TIMESTAMP,
+            lock_version = lock_version + 1
+        WHERE id = #{id}
+          AND lock_version = #{lockVersion}
+    </update>
+
+    <update id="updateEnabled">
+        UPDATE tb_ai_log_module_config
+        SET enabled = #{enabled},
+            update_user_id = #{updateUserId},
+            update_user_name = #{updateUserName},
+            update_time = CURRENT_TIMESTAMP,
+            lock_version = lock_version + 1
+        WHERE id = #{id}
+          AND lock_version = #{lockVersion}
+    </update>
+</mapper>

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.github.badfisher.ailog.persistence.report.DailyReportMapper">
+    <sql id="scope">
+        environment = #{filter.environment}
+        <if test="filter.systemCode != null">AND system_code = #{filter.systemCode}</if>
+    </sql>
+    <select id="enabledModules" resultType="io.github.badfisher.ailog.persistence.query.DashboardQueryData$ModuleKey">
+        SELECT environment, system_code, module_code FROM tb_ai_log_module_config
+        WHERE <include refid="scope"/> AND enabled = 1 AND sync_error_log = 1
+    </select>
+    <select id="fileStates" resultType="io.github.badfisher.ailog.persistence.report.DailyReportData$FileState">
+        SELECT system_code, module_code, sync_status, parse_status FROM tb_ai_log_file_record
+        WHERE <include refid="scope"/> AND log_date = #{filter.startDate} AND file_type = 'ERROR'
+    </select>
+    <select id="analyses" resultType="io.github.badfisher.ailog.persistence.report.DailyReportData$Analysis">
+        SELECT id, system_code, module_code, status FROM tb_ai_log_analysis_task
+        WHERE <include refid="scope"/> AND log_date = #{filter.startDate}
+        ORDER BY id
+    </select>
+    <select id="itemCounts" resultType="io.github.badfisher.ailog.persistence.report.DailyReportData$StatusCount">
+        SELECT status, COUNT(*) AS count FROM tb_ai_log_ai_task_item
+        WHERE analysis_task_id IN
+        <foreach collection="analysisIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+        GROUP BY status
+    </select>
+    <insert id="insertDelivery">
+        INSERT INTO tb_ai_log_ai_daily_report
+            (environment, system_code, log_date, status, create_time, update_time)
+        VALUES (#{record.environment}, #{record.systemCode}, #{record.logDate}, 'WAITING',
+                #{record.updateTime}, #{record.updateTime})
+    </insert>
+    <select id="delivery" resultType="io.github.badfisher.ailog.persistence.report.DailyReportData$Delivery">
+        SELECT id, environment, system_code, log_date, status, send_token, error_message, sent_time, update_time
+        FROM tb_ai_log_ai_daily_report
+        WHERE environment = #{filter.environment} AND log_date = #{filter.startDate}
+          AND system_code = COALESCE(#{filter.systemCode,jdbcType=VARCHAR}, '')
+    </select>
+    <update id="claim">
+        UPDATE tb_ai_log_ai_daily_report SET status = 'SENDING', send_token = #{token},
+            error_message = NULL, sent_time = NULL, update_time = #{now}
+        WHERE id = #{record.id} AND status = #{record.status} AND update_time = #{record.updateTime}
+          AND (send_token = #{record.sendToken} OR (send_token IS NULL AND #{record.sendToken} IS NULL))
+    </update>
+    <update id="finish">
+        UPDATE tb_ai_log_ai_daily_report SET status = #{status}, error_message = #{error},
+            sent_time = CASE WHEN #{status} = 'SUCCESS' THEN #{now} ELSE NULL END, update_time = #{now}
+        WHERE id = #{id} AND status = 'SENDING' AND send_token = #{token}
+    </update>
+</mapper>

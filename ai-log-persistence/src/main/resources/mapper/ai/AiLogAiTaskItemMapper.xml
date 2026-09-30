@@ -1,0 +1,472 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.github.badfisher.ailog.persistence.ai.mapper.AiLogAiTaskItemMapper">
+
+
+    <!-- 调用方在 READ_COMMITTED 事务中先锁 Group；复查能看到等待锁期间已提交的 Item。 -->
+    <select id="selectAutomaticGroupIds" resultType="long">
+        SELECT DISTINCT item.issue_group_id
+        FROM tb_ai_log_ai_task_item item
+        JOIN tb_ai_log_analysis_task analysis ON analysis.id = item.analysis_task_id
+        WHERE item.issue_group_id IN
+        <foreach collection="groupIds" item="groupId" open="(" separator="," close=")">
+            #{groupId}
+        </foreach>
+          AND item.rerun_operation_id IS NULL
+          AND analysis.log_date = #{logDate}
+    </select>
+
+    <select id="lockByTaskAndIssueGroup"
+            resultType="io.github.badfisher.ailog.persistence.ai.entity.AiLogAiTaskItemEntity">
+        SELECT * FROM tb_ai_log_ai_task_item
+        WHERE ai_task_id = #{taskId} AND issue_group_id = #{issueGroupId}
+        ORDER BY id DESC LIMIT 1 FOR UPDATE
+    </select>
+
+    <select id="lockTaskItemsForRerun"
+            resultType="io.github.badfisher.ailog.persistence.ai.entity.AiLogAiTaskItemEntity">
+        SELECT item.* FROM tb_ai_log_ai_task_item item
+        WHERE item.ai_task_id = #{taskId}
+          AND NOT EXISTS (
+              SELECT 1 FROM tb_ai_log_ai_task_item newer
+              WHERE newer.ai_task_id = item.ai_task_id
+                AND newer.issue_group_id = item.issue_group_id AND newer.id &gt; item.id)
+        ORDER BY item.issue_group_id ASC FOR UPDATE
+    </select>
+
+    <select id="selectMaxSelectionOrder" resultType="int">
+        SELECT COALESCE(MAX(selection_order), 0)
+        FROM tb_ai_log_ai_task_item WHERE ai_task_id = #{taskId}
+    </select>
+
+
+    <!-- 同一任务每次取一页尚未执行的 Item ID。 -->
+    <select id="selectReadyItemIds" resultType="long">
+        SELECT item.id
+        FROM tb_ai_log_ai_task_item item
+        JOIN tb_ai_log_ai_task task ON task.id = item.ai_task_id
+        WHERE item.ai_task_id = #{taskId}
+          AND item.id &gt; #{afterItemId}
+          AND task.status IN ('WAITING','RUNNING')
+          AND item.status = 'WAITING'
+          AND item.rerun_status IS NULL
+          AND item.attempt_count &lt; item.max_attempts
+          AND (item.lease_until IS NULL OR item.lease_until &lt; #{now})
+          AND (item.next_retry_time IS NULL OR item.next_retry_time &lt;= #{now})
+        ORDER BY item.id ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectReadyCandidates"
+            resultType="io.github.badfisher.ailog.persistence.ai.mapper.AiLogAiTaskItemMapper$AiTaskDispatchCandidate">
+        SELECT item.id AS itemId,
+               item.ai_task_id AS aiTaskId,
+               item.issue_group_id AS issueGroupId,
+               task.provider_code AS providerCode,
+               task.model_code AS modelCode,
+               item.attempt_count AS attemptCount,
+               item.max_attempts AS maxAttempts
+        FROM tb_ai_log_ai_task_item item
+        JOIN tb_ai_log_ai_task task ON task.id = item.ai_task_id
+        WHERE item.ai_task_id = #{taskId}
+          AND item.id IN
+          <foreach collection="itemIds" item="itemId" open="(" separator="," close=")">
+              #{itemId}
+          </foreach>
+          AND task.status IN ('WAITING','RUNNING')
+          AND item.status = 'WAITING'
+          AND item.rerun_status IS NULL
+          AND item.attempt_count &lt; item.max_attempts
+          AND (item.lease_until IS NULL OR item.lease_until &lt; #{now})
+          AND (item.next_retry_time IS NULL OR item.next_retry_time &lt;= #{now})
+        ORDER BY item.id ASC
+    </select>
+
+    <update id="claim">
+        UPDATE tb_ai_log_ai_task_item
+        SET status = 'RUNNING',
+            claim_token = #{claimToken},
+            lease_owner = #{leaseOwner},
+            lease_until = #{leaseUntil},
+            blame_author_name = NULL,
+            blame_author_time = NULL,
+            started_time = COALESCE(started_time, #{now}),
+            update_time = #{now}
+        WHERE id = #{itemId}
+          AND status = 'WAITING'
+          AND rerun_status IS NULL
+          AND attempt_count &lt; max_attempts
+          AND (lease_until IS NULL OR lease_until &lt; #{now})
+          AND (next_retry_time IS NULL OR next_retry_time &lt;= #{now})
+    </update>
+
+    <update id="renewLease">
+        UPDATE tb_ai_log_ai_task_item
+        SET lease_until = #{leaseUntil},
+            update_time = #{now}
+        WHERE id = #{itemId}
+          AND claim_token = #{claimToken}
+          AND status = 'RUNNING'
+    </update>
+
+    <update id="updateBlame">
+        UPDATE tb_ai_log_ai_task_item item
+        SET item.blame_author_name = #{result.authorName},
+            item.blame_author_time = #{result.authorTime}
+        WHERE item.id = #{itemId}
+          AND item.claim_token = #{claimToken}
+          AND item.status = 'RUNNING'
+          AND ((#{operationId} IS NULL AND item.rerun_operation_id IS NULL)
+            OR (#{operationId} IS NOT NULL
+              AND item.rerun_operation_id = #{operationId}
+              AND item.rerun_status = 'RUNNING'
+              AND item.rerun_execution_token = #{operationExecutionToken}
+              AND EXISTS (
+                  SELECT 1
+                  FROM tb_ai_log_management_operation operation
+                  WHERE operation.id = #{operationId}
+                    AND operation.status = 'RUNNING'
+                    AND operation.execution_token = #{operationExecutionToken}
+                    AND operation.lease_until &gt; #{now}
+              )))
+    </update>
+
+    <update id="markAttemptStarted">
+        UPDATE tb_ai_log_ai_task_item
+        SET attempt_count = attempt_count + 1,
+            evidence_hash = #{evidenceHash},
+            evidence_snapshot_json = #{evidenceSnapshotJson},
+            next_retry_time = NULL,
+            update_time = #{now}
+        WHERE id = #{itemId}
+          AND claim_token = #{claimToken}
+          AND status = 'RUNNING'
+          AND attempt_count = #{expectedAttemptCount}
+          AND attempt_count &lt; max_attempts
+    </update>
+
+    <!-- 普通分析与重分析成功共用结果赋值；状态和执行令牌条件分别保留。 -->
+    <sql id="successResultAssignments">
+        final_attempt_no = attempt_count,
+        judgement = #{result.judgement},
+        severity = #{result.severity},
+        ai_category = #{result.category},
+        result_title = #{result.title},
+        result_summary = #{result.summary},
+        analysis_basis = #{result.analysisBasis},
+        root_cause = #{result.rootCause},
+        impact_description = #{result.impact},
+        recommendation = #{result.recommendation},
+        suggested_resolution_days = #{result.suggestedResolutionDays},
+        verification = #{result.verification},
+        uncertainty = #{result.uncertainty},
+        rule_suggestion = #{result.ruleSuggestion},
+        confidence = #{result.confidence},
+        human_review_required = #{result.humanReviewRequired},
+        result_hash = #{resultHash},
+        input_token_count = input_token_count + COALESCE(#{result.inputTokens}, 0),
+        output_token_count = output_token_count + COALESCE(#{result.outputTokens}, 0),
+        total_token_count = total_token_count + COALESCE(#{result.totalTokens}, 0),
+        total_latency_millis = total_latency_millis + #{latencyMillis},
+        claim_token = NULL,
+        lease_owner = NULL,
+        lease_until = NULL,
+        next_retry_time = NULL,
+        last_error_code = NULL,
+        last_error_message = NULL,
+        finish_time = #{now},
+        update_time = #{now}
+    </sql>
+
+    <update id="completeSuccess">
+        UPDATE tb_ai_log_ai_task_item
+        SET status = 'SUCCESS',
+        <include refid="successResultAssignments"/>
+        WHERE id = #{itemId}
+          AND claim_token = #{claimToken}
+          AND status = 'RUNNING'
+    </update>
+
+    <update id="completeFailure">
+        UPDATE tb_ai_log_ai_task_item
+        SET status = CASE WHEN #{failure.retryable} AND attempt_count &lt; max_attempts
+                              THEN 'WAITING' ELSE 'FAILED' END,
+            final_attempt_no = CASE WHEN #{failure.retryable} AND attempt_count &lt; max_attempts
+                                    THEN NULL ELSE attempt_count END,
+            next_retry_time = CASE WHEN #{failure.retryable} AND attempt_count &lt; max_attempts
+                                   THEN #{nextRetryTime} ELSE NULL END,
+            input_token_count = input_token_count + COALESCE(#{failure.inputTokens}, 0),
+            output_token_count = output_token_count + COALESCE(#{failure.outputTokens}, 0),
+            total_token_count = total_token_count + COALESCE(#{failure.totalTokens}, 0),
+            total_latency_millis = total_latency_millis + #{latencyMillis},
+            claim_token = NULL,
+            lease_owner = NULL,
+            lease_until = NULL,
+            last_error_code = #{failure.errorCode},
+            last_error_message = #{failure.errorMessage},
+            finish_time = CASE WHEN #{failure.retryable} AND attempt_count &lt; max_attempts
+                               THEN NULL ELSE #{now} END,
+            update_time = #{now}
+        WHERE id = #{itemId}
+          AND claim_token = #{claimToken}
+          AND status = 'RUNNING'
+    </update>
+
+    <update id="failBeforeCall">
+        UPDATE tb_ai_log_ai_task_item
+        SET status = 'FAILED',
+            claim_token = NULL,
+            lease_owner = NULL,
+            lease_until = NULL,
+            next_retry_time = NULL,
+            last_error_code = #{errorCode},
+            last_error_message = #{errorMessage},
+            finish_time = #{now},
+            update_time = #{now}
+        WHERE id = #{itemId}
+          AND claim_token = #{claimToken}
+          AND status = 'RUNNING'
+    </update>
+
+    <update id="releaseClaim">
+        UPDATE tb_ai_log_ai_task_item
+        SET status = 'WAITING',
+            next_retry_time = NULL,
+            claim_token = NULL,
+            lease_owner = NULL,
+            lease_until = NULL,
+            last_error_code = #{errorCode},
+            last_error_message = #{errorMessage},
+            update_time = #{now}
+        WHERE id = #{itemId}
+          AND claim_token = #{claimToken}
+          AND status = 'RUNNING'
+    </update>
+
+    <select id="selectExpiredTaskIds" resultType="long">
+        SELECT DISTINCT ai_task_id
+        FROM tb_ai_log_ai_task_item
+        WHERE status = 'RUNNING'
+          AND rerun_status IS NULL
+          AND lease_until IS NOT NULL
+          AND lease_until &lt; #{now}
+    </select>
+
+    <update id="recoverExpired">
+        UPDATE tb_ai_log_ai_task_item
+        SET status = CASE WHEN attempt_count = 0 THEN 'WAITING' ELSE 'FAILED' END,
+            next_retry_time = NULL,
+            final_attempt_no = CASE WHEN attempt_count &gt; 0
+                                    THEN attempt_count ELSE NULL END,
+            claim_token = NULL,
+            lease_owner = NULL,
+            lease_until = NULL,
+            last_error_code = 'WORKER_LOST',
+            last_error_message = 'AI worker lease expired before completion',
+            finish_time = CASE WHEN attempt_count &gt; 0 THEN #{now} ELSE NULL END,
+            update_time = #{now}
+        WHERE status = 'RUNNING'
+          AND rerun_status IS NULL
+          AND lease_until IS NOT NULL
+          AND lease_until &lt; #{now}
+    </update>
+
+
+
+    <update id="clearWaitingRerunReservations">
+        UPDATE tb_ai_log_ai_task_item
+        SET status = 'FAILED', rerun_status = 'FAILED',
+            last_error_code = 'RERUN_CANCELLED',
+            last_error_message = '重分析操作未能执行', finish_time = #{now}, update_time = #{now}
+        WHERE rerun_operation_id = #{operationId} AND rerun_status = 'WAITING'
+    </update>
+
+    <select id="selectRerunWaitingItemIds" resultType="long">
+        SELECT id
+        FROM tb_ai_log_ai_task_item
+        WHERE rerun_operation_id = #{operationId}
+          AND rerun_status = 'WAITING'
+        ORDER BY selection_order ASC, id ASC
+    </select>
+
+    <select id="selectRerunCandidate"
+            resultType="io.github.badfisher.ailog.persistence.ai.mapper.AiLogAiTaskItemMapper$AiTaskDispatchCandidate">
+        SELECT item.id AS itemId,
+               item.ai_task_id AS aiTaskId,
+               item.issue_group_id AS issueGroupId,
+               task.provider_code AS providerCode,
+               task.model_code AS modelCode,
+               item.attempt_count AS attemptCount,
+               item.max_attempts AS maxAttempts
+        FROM tb_ai_log_ai_task_item item
+        JOIN tb_ai_log_ai_task task ON task.id = item.ai_task_id
+        JOIN tb_ai_log_management_operation operation
+          ON operation.id = item.rerun_operation_id
+        WHERE item.id = #{itemId}
+          AND item.rerun_operation_id = #{operationId}
+          AND item.rerun_status = 'WAITING'
+          AND item.status = 'WAITING'
+          AND operation.status = 'RUNNING'
+          AND operation.execution_token = #{operationExecutionToken}
+    </select>
+
+    <update id="claimRerun">
+        UPDATE tb_ai_log_ai_task_item item
+        SET item.status = 'RUNNING',
+            item.rerun_status = 'RUNNING',
+            item.rerun_execution_token = #{operationExecutionToken},
+            item.claim_token = #{claimToken},
+            item.lease_owner = #{leaseOwner},
+            item.lease_until = #{leaseUntil},
+            item.started_time = #{now},
+            item.update_time = #{now}
+        WHERE item.id = #{itemId}
+          AND item.rerun_operation_id = #{operationId}
+          AND item.rerun_status = 'WAITING'
+          AND item.status = 'WAITING'
+          AND EXISTS (
+              SELECT 1
+              FROM tb_ai_log_management_operation operation
+              WHERE operation.id = #{operationId}
+                AND operation.status = 'RUNNING'
+                AND operation.execution_token = #{operationExecutionToken}
+                AND operation.lease_until &gt; #{now}
+          )
+    </update>
+
+    <update id="markRerunAttemptStarted">
+        UPDATE tb_ai_log_ai_task_item item
+        SET item.attempt_count = item.attempt_count + 1,
+            item.evidence_hash = #{evidenceHash},
+            item.evidence_snapshot_json = #{evidenceSnapshotJson},
+            item.update_time = #{now}
+        WHERE item.id = #{itemId}
+          AND item.claim_token = #{claimToken}
+          AND item.rerun_operation_id = #{operationId}
+          AND item.rerun_execution_token = #{operationExecutionToken}
+          AND item.rerun_status = 'RUNNING'
+          AND item.status = 'RUNNING'
+          AND item.attempt_count = #{expectedAttemptCount}
+          AND EXISTS (
+              SELECT 1
+              FROM tb_ai_log_management_operation operation
+              WHERE operation.id = #{operationId}
+                AND operation.status = 'RUNNING'
+                AND operation.execution_token = #{operationExecutionToken}
+                AND operation.lease_until &gt; #{now}
+          )
+    </update>
+
+    <update id="completeRerunSuccess">
+        UPDATE tb_ai_log_ai_task_item
+        SET status = 'SUCCESS',
+            rerun_status = 'SUCCESS',
+        <include refid="successResultAssignments"/>
+        WHERE id = #{itemId}
+          AND claim_token = #{claimToken}
+          AND rerun_operation_id = #{operationId}
+          AND rerun_execution_token = #{operationExecutionToken}
+          AND rerun_status = 'RUNNING'
+          AND status = 'RUNNING'
+          AND EXISTS (
+              SELECT 1
+              FROM tb_ai_log_management_operation operation
+              WHERE operation.id = #{operationId}
+                AND operation.status = 'RUNNING'
+                AND operation.execution_token = #{operationExecutionToken}
+                AND operation.lease_until &gt; #{now}
+          )
+    </update>
+
+    <update id="completeRerunFailure">
+        UPDATE tb_ai_log_ai_task_item
+        SET status = 'FAILED',
+            rerun_status = 'FAILED',
+            final_attempt_no = attempt_count,
+            next_retry_time = NULL,
+            input_token_count = input_token_count + COALESCE(#{failure.inputTokens}, 0),
+            output_token_count = output_token_count + COALESCE(#{failure.outputTokens}, 0),
+            total_token_count = total_token_count + COALESCE(#{failure.totalTokens}, 0),
+            total_latency_millis = total_latency_millis + #{latencyMillis},
+            claim_token = NULL,
+            lease_owner = NULL,
+            lease_until = NULL,
+            last_error_code = #{failure.errorCode},
+            last_error_message = #{failure.errorMessage},
+            finish_time = #{now},
+            update_time = #{now}
+        WHERE id = #{itemId}
+          AND claim_token = #{claimToken}
+          AND rerun_operation_id = #{operationId}
+          AND rerun_execution_token = #{operationExecutionToken}
+          AND rerun_status = 'RUNNING'
+          AND status = 'RUNNING'
+          AND EXISTS (
+              SELECT 1
+              FROM tb_ai_log_management_operation operation
+              WHERE operation.id = #{operationId}
+                AND operation.status = 'RUNNING'
+                AND operation.execution_token = #{operationExecutionToken}
+                AND operation.lease_until &gt; #{now}
+          )
+    </update>
+
+    <update id="failRerunBeforeCall">
+        UPDATE tb_ai_log_ai_task_item
+        SET status = 'FAILED',
+            rerun_status = 'FAILED',
+            final_attempt_no = NULL,
+            claim_token = NULL,
+            lease_owner = NULL,
+            lease_until = NULL,
+            next_retry_time = NULL,
+            last_error_code = #{errorCode},
+            last_error_message = #{errorMessage},
+            finish_time = #{now},
+            update_time = #{now}
+        WHERE id = #{itemId}
+          AND claim_token = #{claimToken}
+          AND rerun_operation_id = #{operationId}
+          AND rerun_execution_token = #{operationExecutionToken}
+          AND rerun_status = 'RUNNING'
+          AND status = 'RUNNING'
+          AND EXISTS (
+              SELECT 1
+              FROM tb_ai_log_management_operation operation
+              WHERE operation.id = #{operationId}
+                AND operation.status = 'RUNNING'
+                AND operation.execution_token = #{operationExecutionToken}
+                AND operation.lease_until &gt; #{now}
+          )
+    </update>
+
+    <update id="recoverExpiredRerunItems">
+        UPDATE tb_ai_log_ai_task_item
+        SET status = 'FAILED',
+            rerun_status = 'FAILED',
+            rerun_execution_token = NULL,
+            final_attempt_no = CASE
+                WHEN EXISTS (
+                    SELECT 1
+                    FROM tb_ai_log_ai_call_attempt attempt
+                    WHERE attempt.ai_task_item_id = tb_ai_log_ai_task_item.id
+                      AND attempt.rerun_operation_id = #{operationId}
+                ) THEN attempt_count
+                ELSE NULL
+            END,
+            claim_token = NULL,
+            lease_owner = NULL,
+            lease_until = NULL,
+            next_retry_time = NULL,
+            last_error_code = 'RERUN_WORKER_LOST',
+            last_error_message = 'AI rerun worker lease expired before completion',
+            finish_time = #{now},
+            update_time = #{now}
+        WHERE rerun_operation_id = #{operationId}
+          AND rerun_status = 'RUNNING'
+          AND status = 'RUNNING'
+          AND lease_until IS NOT NULL
+          AND lease_until &lt; #{now}
+    </update>
+</mapper>

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.github.badfisher.ailog.persistence.analysis.mapper.AiLogAnalysisTaskMapper">
+
+    <select id="selectRecoveryBatch"
+            resultType="io.github.badfisher.ailog.persistence.analysis.entity.AiLogAnalysisTaskEntity">
+        SELECT *
+        FROM tb_ai_log_analysis_task
+        WHERE id &gt; #{afterId}
+          AND environment = #{environment}
+          AND system_code = #{systemCode}
+          AND status = 'PARSING'
+        ORDER BY id ASC
+        LIMIT #{limit}
+    </select>
+    <select id="lockById"
+            resultType="io.github.badfisher.ailog.persistence.analysis.entity.AiLogAnalysisTaskEntity">
+        SELECT * FROM tb_ai_log_analysis_task WHERE id = #{id} FOR UPDATE
+    </select>
+</mapper>

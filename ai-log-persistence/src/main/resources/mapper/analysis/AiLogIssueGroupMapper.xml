@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.github.badfisher.ailog.persistence.analysis.mapper.AiLogIssueGroupMapper">
+
+
+    <select id="lockByIdentity"
+            resultType="io.github.badfisher.ailog.persistence.analysis.entity.AiLogIssueGroupEntity">
+        SELECT *
+        FROM tb_ai_log_issue_group
+        WHERE environment = #{environment}
+          AND system_code = #{systemCode}
+          AND module_code = #{moduleCode}
+          AND stable_fingerprint = #{stableFingerprint}
+          AND fingerprint_version = #{fingerprintVersion}
+        FOR UPDATE
+    </select>
+
+    <select id="lockById" resultType="io.github.badfisher.ailog.persistence.analysis.entity.AiLogIssueGroupEntity">
+        SELECT * FROM tb_ai_log_issue_group WHERE id = #{id} FOR UPDATE
+    </select>
+
+    <select id="lockByIds" resultType="io.github.badfisher.ailog.persistence.analysis.entity.AiLogIssueGroupEntity">
+        SELECT * FROM tb_ai_log_issue_group
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        ORDER BY id ASC FOR UPDATE
+    </select>
+
+    <update id="reserveAi">
+        UPDATE tb_ai_log_issue_group
+        SET active_ai_item_id = #{itemId}, ai_status = 'WAITING',
+            lock_version = lock_version + 1
+        WHERE id = #{id} AND active_ai_item_id IS NULL
+    </update>
+
+    <!-- 只从当前占位 Item 投影执行状态；人工治理字段不在更新集合中。 -->
+    <sql id="aiStateProjection">
+        UPDATE tb_ai_log_issue_group issue
+        JOIN tb_ai_log_ai_task_item item ON item.id = issue.active_ai_item_id
+        SET issue.ai_status = CASE item.status
+                WHEN 'SUCCESS' THEN 'COMPLETED'
+                WHEN 'RUNNING' THEN 'PROCESSING'
+                WHEN 'FAILED' THEN 'FAILED'
+                ELSE 'WAITING' END,
+            issue.current_ai_item_id = CASE WHEN item.status = 'SUCCESS'
+                THEN item.id ELSE issue.current_ai_item_id END,
+            issue.active_ai_item_id = CASE WHEN item.status IN ('SUCCESS', 'FAILED')
+                THEN NULL ELSE item.id END,
+            issue.lock_version = issue.lock_version + 1
+    </sql>
+
+    <update id="refreshAiState">
+        <include refid="aiStateProjection"/>
+        WHERE issue.id = #{id} AND item.id = #{itemId}
+    </update>
+
+    <update id="refreshTaskAiStates">
+        <include refid="aiStateProjection"/>
+        WHERE item.ai_task_id = #{taskId}
+    </update>
+
+    <update id="refreshOperationAiStates">
+        <include refid="aiStateProjection"/>
+        WHERE item.rerun_operation_id = #{operationId}
+    </update>
+</mapper>

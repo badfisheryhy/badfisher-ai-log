@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.github.badfisher.ailog.persistence.query.DashboardQueryMapper">
+    <!-- 模块身份与治理记录均有唯一约束；Event 用 EXISTS 限定日期，避免重复计数。 -->
+    <select id="overview" resultType="io.github.badfisher.ailog.persistence.query.DashboardQueryData$Overview">
+        SELECT COUNT(*) AS total_count,
+               COALESCE(SUM(CASE WHEN governance.process_status = 'PENDING' THEN 1 ELSE 0 END), 0) AS pending_count,
+               COALESCE(SUM(CASE WHEN governance.process_status = 'PROCESSING' THEN 1 ELSE 0 END), 0) AS processing_count,
+               COALESCE(SUM(CASE WHEN governance.process_status = 'RESOLVED' THEN 1 ELSE 0 END), 0) AS resolved_count,
+               COALESCE(SUM(CASE WHEN governance.process_status = 'COMPLETED' THEN 1 ELSE 0 END), 0) AS completed_count,
+               COALESCE(SUM(CASE WHEN governance.process_status = 'IGNORED' THEN 1 ELSE 0 END), 0) AS ignored_count,
+               COALESCE(SUM(CASE WHEN governance.id IS NULL THEN 1 ELSE 0 END), 0) AS missing_governance_count
+        FROM tb_ai_log_module_config config
+        INNER JOIN tb_ai_log_issue_group issue_group
+            ON config.environment = issue_group.environment
+            AND config.system_code = issue_group.system_code
+            AND config.module_code = issue_group.module_code
+        LEFT JOIN tb_ai_log_issue_group_governance governance
+            ON governance.issue_group_id = issue_group.id
+        <where>
+            config.enabled = 1
+            <if test="filter.environment != null">AND config.environment = #{filter.environment}</if>
+            <if test="filter.systemCode != null">AND config.system_code = #{filter.systemCode}</if>
+            <if test="filter.moduleCode != null">AND config.module_code = #{filter.moduleCode}</if>
+            AND EXISTS (
+                SELECT 1 FROM tb_ai_log_error_event event
+                WHERE event.issue_group_id = issue_group.id
+                  AND event.log_date BETWEEN #{filter.startDate} AND #{filter.endDate}
+            )
+        </where>
+    </select>
+
+    <!-- Dashboard 从启用配置关联 Event；日报沿用原有 Event 范围。 -->
+    <sql id="eventScope">
+        <choose>
+            <when test="filter.enabledModulesOnly">
+                FROM tb_ai_log_module_config config
+                INNER JOIN tb_ai_log_error_event event
+                    ON event.environment = config.environment
+                    AND event.system_code = config.system_code
+                    AND event.module_code = config.module_code
+                    AND config.enabled = 1
+            </when>
+            <otherwise>FROM tb_ai_log_error_event event</otherwise>
+        </choose>
+        WHERE event.issue_group_id IS NOT NULL
+          AND event.log_date BETWEEN #{filter.startDate} AND #{filter.endDate}
+        <if test="filter.environment != null">AND event.environment = #{filter.environment}</if>
+        <if test="filter.systemCode != null">AND event.system_code = #{filter.systemCode}</if>
+        <if test="filter.moduleCode != null">AND event.module_code = #{filter.moduleCode}</if>
+    </sql>
+
+    <select id="occurredGroups" resultType="io.github.badfisher.ailog.persistence.query.DashboardQueryData$GroupModuleRef">
+        SELECT DISTINCT event.issue_group_id, event.environment, event.system_code, event.module_code
+        <include refid="eventScope"/>
+        ORDER BY event.issue_group_id
+    </select>
+
+    <select id="dailyOccurrences" resultType="io.github.badfisher.ailog.persistence.query.DashboardQueryData$DailyOccurrence">
+        SELECT event.log_date, event.environment, event.system_code, event.module_code,
+               SUM(event.occurrence_count) AS occurrence_count
+        <include refid="eventScope"/>
+        GROUP BY event.log_date, event.environment, event.system_code, event.module_code
+        ORDER BY event.environment, event.system_code, event.module_code, event.log_date
+    </select>
+
+    <select id="enabledModules" resultType="io.github.badfisher.ailog.persistence.query.DashboardQueryData$ModuleKey">
+        SELECT environment, system_code, module_code
+        FROM tb_ai_log_module_config
+        WHERE enabled = 1
+        ORDER BY environment, system_code, module_code
+    </select>
+</mapper>

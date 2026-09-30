@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.github.badfisher.ailog.persistence.ai.mapper.AiLogAiTaskMapper">
+
+    <select id="selectAnalysisLogDate" resultType="java.time.LocalDate">
+        SELECT log_date FROM tb_ai_log_analysis_task
+        WHERE id = #{analysisTaskId} AND status = 'SUCCESS'
+    </select>
+
+    <select id="selectNextTaskId" resultType="long">
+        SELECT id
+        FROM tb_ai_log_ai_task
+        WHERE id &gt; #{afterTaskId}
+          AND status IN ('PENDING', 'WAITING', 'RUNNING')
+        ORDER BY id ASC
+        LIMIT 1
+    </select>
+
+    <select id="lockByIdForRerun"
+            resultType="io.github.badfisher.ailog.persistence.ai.entity.AiLogAiTaskEntity">
+        SELECT id,
+               task_no,
+               analysis_task_id,
+               environment,
+               system_code,
+               module_code,
+               provider_code,
+               model_code,
+               status,
+               delivery_status
+        FROM tb_ai_log_ai_task
+        WHERE id = #{taskId}
+        FOR UPDATE
+    </select>
+
+    <!-- 结果事务先锁父任务，再更新 Attempt、Item 和汇总，避免并发锁顺序反转。 -->
+    <select id="lockForSummaryUpdate" resultType="long">
+        SELECT id
+        FROM tb_ai_log_ai_task
+        WHERE id = #{taskId}
+        FOR UPDATE
+    </select>
+
+    <update id="markRunning">
+        UPDATE tb_ai_log_ai_task
+        SET status = 'RUNNING',
+            start_time = COALESCE(start_time, #{now}),
+            update_time = #{now}
+        WHERE id = #{taskId}
+          AND status = 'WAITING'
+    </update>
+
+    <!-- 汇总以 Item 和 Attempt 实际行数为准，避免并发完成时计数漂移。 -->
+    <update id="refreshSummary">
+        UPDATE tb_ai_log_ai_task task
+        LEFT JOIN (
+            SELECT ai_task_id,
+                   SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END) AS success_count,
+                   SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) AS failed_count,
+                   SUM(CASE WHEN status = 'RUNNING' THEN 1 ELSE 0 END) AS running_count,
+                   SUM(CASE WHEN status = 'WAITING' THEN 1 ELSE 0 END) AS waiting_count
+            FROM tb_ai_log_ai_task_item
+            WHERE ai_task_id = #{taskId} AND rerun_operation_id IS NULL
+            GROUP BY ai_task_id
+        ) item_summary ON item_summary.ai_task_id = task.id
+        LEFT JOIN (
+            SELECT item.ai_task_id,
+                   COUNT(attempt.id) AS total_attempt_count,
+                   COALESCE(SUM(attempt.total_tokens), 0) AS total_tokens
+            FROM tb_ai_log_ai_task_item item
+            LEFT JOIN tb_ai_log_ai_call_attempt attempt
+              ON attempt.ai_task_item_id = item.id
+            WHERE item.ai_task_id = #{taskId} AND item.rerun_operation_id IS NULL
+            GROUP BY item.ai_task_id
+        ) attempt_summary ON attempt_summary.ai_task_id = task.id
+        SET task.success_count = COALESCE(item_summary.success_count, 0),
+            task.failed_count = COALESCE(item_summary.failed_count, 0),
+            task.total_attempt_count = COALESCE(attempt_summary.total_attempt_count, 0),
+            task.total_token_count = COALESCE(attempt_summary.total_tokens, 0),
+            task.delivery_token = NULL,
+            task.delivery_status = CASE
+                WHEN task.delivery_status = 'DELIVERING' THEN 'WAITING'
+                ELSE task.delivery_status
+            END,
+            task.status = CASE
+                WHEN COALESCE(item_summary.running_count, 0) &gt; 0 THEN 'RUNNING'
+                WHEN COALESCE(item_summary.waiting_count, 0) &gt; 0 THEN 'WAITING'
+                WHEN task.preparation_complete = 0 THEN 'PENDING'
+                ELSE 'SUCCESS'
+            END,
+            task.finish_time = CASE
+                WHEN task.preparation_complete = 0 THEN NULL
+                WHEN task.total_count = 0
+                     OR (COALESCE(item_summary.running_count, 0) = 0
+                         AND COALESCE(item_summary.waiting_count, 0) = 0)
+                    THEN COALESCE(task.finish_time, #{now})
+                ELSE NULL
+            END,
+            task.update_time = #{now}
+        WHERE task.id = #{taskId}
+    </update>
+
+    <sql id="deliveryProjection">
+        SELECT task.id AS aiTaskId,
+               task.task_no AS taskNo,
+               task.analysis_task_id AS analysisTaskId,
+               task.environment AS environment,
+               task.system_code AS systemCode,
+               task.module_code AS moduleCode,
+               analysis.log_date AS logDate,
+               task.provider_code AS providerCode,
+               task.model_code AS modelCode,
+               task.status AS status,
+               task.candidate_count AS candidateCount,
+               task.total_count AS totalCount,
+               task.success_count AS successCount,
+               task.failed_count AS failedCount,
+               task.total_attempt_count AS totalAttemptCount,
+               task.total_token_count AS totalTokenCount
+        FROM tb_ai_log_ai_task task
+        JOIN tb_ai_log_analysis_task analysis ON analysis.id = task.analysis_task_id
+    </sql>
+
+    <select id="selectDeliveryCandidates"
+            resultType="io.github.badfisher.ailog.persistence.ai.mapper.AiLogAiTaskMapper$AiTaskDeliveryCandidate">
+        <include refid="deliveryProjection" />
+        WHERE task.id &gt; #{afterTaskId}
+          AND task.status IN ('SUCCESS','PARTIAL_SUCCESS','FAILED')
+          AND NOT EXISTS (
+              SELECT 1 FROM tb_ai_log_ai_task_item running_item
+              WHERE running_item.ai_task_id = task.id
+                AND running_item.status = 'RUNNING'
+          )
+          AND NOT EXISTS (
+              SELECT 1
+              FROM tb_ai_log_management_operation operation
+              WHERE operation.target_id = CAST(task.id AS CHAR)
+                AND operation.operation_type IN ('AI_GROUP_RERUN','AI_TASK_RERUN')
+                AND operation.status = 'RUNNING'
+          )
+          AND (task.delivery_status IN ('WAITING','FAILED')
+               OR (task.delivery_status = 'DELIVERING'
+                   AND task.delivery_start_time &lt;= #{staleBefore}))
+        ORDER BY task.id ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectClaimedDelivery"
+            resultType="io.github.badfisher.ailog.persistence.ai.mapper.AiLogAiTaskMapper$AiTaskDeliveryCandidate">
+        <include refid="deliveryProjection" />
+        WHERE task.id = #{taskId}
+          AND task.delivery_status = 'DELIVERING'
+          AND task.delivery_token = #{claimToken}
+    </select>
+
+    <update id="claimDelivery">
+        UPDATE tb_ai_log_ai_task
+        SET delivery_status = 'DELIVERING',
+            delivery_token = #{claimToken},
+            delivery_attempt_count = delivery_attempt_count + 1,
+            delivery_error_message = NULL,
+            delivery_start_time = #{now},
+            update_time = #{now}
+        WHERE id = #{taskId}
+          AND status IN ('SUCCESS','PARTIAL_SUCCESS','FAILED')
+          AND NOT EXISTS (
+              SELECT 1 FROM tb_ai_log_ai_task_item running_item
+              WHERE running_item.ai_task_id = #{taskId}
+                AND running_item.status = 'RUNNING'
+          )
+          AND NOT EXISTS (
+              SELECT 1
+              FROM tb_ai_log_management_operation operation
+              WHERE operation.target_id = CAST(#{taskId} AS CHAR)
+                AND operation.operation_type IN ('AI_GROUP_RERUN','AI_TASK_RERUN')
+                AND operation.status = 'RUNNING'
+          )
+          AND (delivery_status IN ('WAITING','FAILED')
+               OR (delivery_status = 'DELIVERING'
+                   AND delivery_start_time &lt;= #{staleBefore}))
+    </update>
+
+    <update id="completeDelivery">
+        UPDATE tb_ai_log_ai_task
+        SET delivery_status = 'SUCCESS',
+            delivery_token = NULL,
+            report_object_key = #{objectKey},
+            delivery_error_message = NULL,
+            delivered_time = #{now},
+            update_time = #{now}
+        WHERE id = #{taskId}
+          AND delivery_status = 'DELIVERING'
+          AND delivery_token = #{claimToken}
+    </update>
+
+    <update id="failDelivery">
+        UPDATE tb_ai_log_ai_task
+        SET delivery_status = 'FAILED',
+            delivery_token = NULL,
+            report_object_key = COALESCE(#{objectKey}, report_object_key),
+            delivery_error_message = #{errorMessage},
+            update_time = #{now}
+        WHERE id = #{taskId}
+          AND delivery_status = 'DELIVERING'
+          AND delivery_token = #{claimToken}
+    </update>
+</mapper>

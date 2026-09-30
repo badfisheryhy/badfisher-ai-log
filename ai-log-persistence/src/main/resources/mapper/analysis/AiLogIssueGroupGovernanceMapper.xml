@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.github.badfisher.ailog.persistence.analysis.mapper.AiLogIssueGroupGovernanceMapper">
+    <select id="lockByGroupId"
+            resultType="io.github.badfisher.ailog.persistence.analysis.entity.AiLogIssueGroupGovernanceEntity">
+        SELECT * FROM tb_ai_log_issue_group_governance WHERE issue_group_id = #{groupId} FOR UPDATE
+    </select>
+
+    <select id="selectAutomaticGroupIds" resultType="long">
+        SELECT issue_group_id FROM tb_ai_log_issue_group_governance
+        WHERE issue_group_id IN
+        <foreach collection="groupIds" item="groupId" open="(" separator="," close=")">
+            #{groupId}
+        </foreach>
+          AND process_status = 'PENDING'
+          AND review_status IN ('PENDING', 'REJECTED')
+        ORDER BY issue_group_id
+        FOR UPDATE
+    </select>
+
+    <select id="selectByIssueGroupIds"
+            resultType="io.github.badfisher.ailog.persistence.analysis.entity.AiLogIssueGroupGovernanceEntity">
+        SELECT issue_group_id, review_status, process_status, owner_user_id
+        FROM tb_ai_log_issue_group_governance
+        WHERE issue_group_id IN
+        <foreach collection="groupIds" item="groupId" open="(" separator="," close=")">
+            #{groupId}
+        </foreach>
+    </select>
+
+    <!-- 在 AI 成功事务内、Group 指针更新后执行；逐字段条件更新，已有人工值不被覆盖。 -->
+    <update id="fillMissingProblem">
+        UPDATE tb_ai_log_issue_group_governance
+        SET problem_type = CASE
+                WHEN (problem_type IS NULL OR TRIM(problem_type) = '')
+                    AND COALESCE(TRIM(#{problemType,jdbcType=VARCHAR}), '') != ''
+                THEN TRIM(#{problemType,jdbcType=VARCHAR}) ELSE problem_type END,
+            problem_level = CASE
+                WHEN (problem_level IS NULL OR TRIM(problem_level) = '')
+                    AND COALESCE(TRIM(#{problemLevel,jdbcType=VARCHAR}), '') != ''
+                THEN TRIM(#{problemLevel,jdbcType=VARCHAR}) ELSE problem_level END,
+            version = version + 1,
+            update_time = #{now}
+        WHERE issue_group_id = #{groupId}
+          AND (((problem_type IS NULL OR TRIM(problem_type) = '')
+                AND COALESCE(TRIM(#{problemType,jdbcType=VARCHAR}), '') != '')
+            OR ((problem_level IS NULL OR TRIM(problem_level) = '')
+                AND COALESCE(TRIM(#{problemLevel,jdbcType=VARCHAR}), '') != ''))
+    </update>
+
+    <update id="updateState">
+        UPDATE tb_ai_log_issue_group_governance
+        SET
+            review_status = #{state.reviewStatus},
+            reviewer_user_id = #{state.reviewerUserId},
+            reviewed_time = #{state.reviewedTime},
+            reviewed_ai_item_id = #{state.reviewedAiItemId},
+            review_remark = #{state.reviewRemark},
+            human_conclusion = #{state.humanConclusion},
+            problem_type = #{state.problemType},
+            problem_level = #{state.problemLevel},
+            resolution_days_override = #{state.resolutionDaysOverride},
+            owner_user_id = #{state.ownerUserId},
+            assign_user_id = #{state.assignUserId},
+            assigned_time = #{state.assignedTime},
+            claim_user_id = #{state.claimUserId},
+            claimed_time = #{state.claimedTime},
+            process_status = #{state.processStatus},
+            resolved_user_id = #{state.resolvedUserId},
+            resolved_time = #{state.resolvedTime},
+            resolution_remark = #{state.resolutionRemark},
+            completed_user_id = #{state.completedUserId},
+            completed_time = #{state.completedTime},
+            completion_remark = #{state.completionRemark},
+            version = version + 1,
+            update_time = #{state.updateTime}
+        WHERE issue_group_id = #{state.issueGroupId} AND version = #{expectedVersion}
+    </update>
+</mapper>

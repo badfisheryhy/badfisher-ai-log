@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.github.badfisher.ailog.persistence.sync.mapper.AiLogSyncTaskMapper">
+
+    <select id="selectUniqueIndexColumns" resultType="string">
+        SELECT GROUP_CONCAT(CONCAT(column_name, ':',
+                   COALESCE(CAST(sub_part AS CHAR), 'FULL'))
+                   ORDER BY seq_in_index SEPARATOR ',')
+        FROM information_schema.statistics
+        WHERE table_schema = DATABASE()
+          AND table_name = 'tb_ai_log_sync_task'
+          AND index_name = #{indexName}
+          AND non_unique = 0
+    </select>
+
+    <select id="selectRecoveryBatch"
+            resultType="io.github.badfisher.ailog.persistence.sync.entity.AiLogSyncTaskEntity">
+        SELECT *
+        FROM tb_ai_log_sync_task
+        WHERE id &gt; #{afterId}
+          AND environment = #{environment}
+          AND system_code = #{systemCode}
+          AND status IN ('PENDING', 'RUNNING')
+        ORDER BY id ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectByBusinessDate"
+            resultType="io.github.badfisher.ailog.persistence.sync.entity.AiLogSyncTaskEntity">
+        SELECT *
+        FROM tb_ai_log_sync_task
+        WHERE environment = #{environment}
+          AND system_code = #{systemCode}
+          AND log_date = #{logDate}
+    </select>
+</mapper>

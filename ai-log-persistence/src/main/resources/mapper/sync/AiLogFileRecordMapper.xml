@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.github.badfisher.ailog.persistence.sync.mapper.AiLogFileRecordMapper">
+
+    <!-- 显式列映射，不依赖全局 map-underscore-to-camel-case 配置。 -->
+    <resultMap id="FileRecordResultMap" type="io.github.badfisher.ailog.persistence.sync.entity.AiLogFileRecordEntity">
+        <id column="id" property="id" />
+        <result column="system_code" property="systemCode" />
+        <result column="environment" property="environment" />
+        <result column="module_code" property="moduleCode" />
+        <result column="log_date" property="logDate" />
+        <result column="file_type" property="fileType" />
+        <result column="remote_path" property="remotePath" />
+        <result column="local_path" property="localPath" />
+        <result column="file_name" property="fileName" />
+        <result column="file_size" property="fileSize" />
+        <result column="sync_task_id" property="syncTaskId" />
+        <result column="sync_module_task_id" property="syncModuleTaskId" />
+        <result column="sync_status" property="syncStatus" />
+        <result column="parse_status" property="parseStatus" />
+        <result column="ready_time" property="readyTime" />
+        <result column="parse_time" property="parseTime" />
+        <result column="error_message" property="errorMessage" />
+        <result column="create_time" property="createTime" />
+        <result column="update_time" property="updateTime" />
+    </resultMap>
+
+    <!-- 分析任务认领候选：READY 且待解析的 ERROR 文件，按日志日期与 ID 升序，限量扫描。
+         logDate 为空表示不限日期（补偿场景）。 -->
+    <select id="selectClaimCandidates" resultMap="FileRecordResultMap">
+        SELECT id, system_code, environment, module_code, log_date, file_type,
+               remote_path, local_path, file_name, file_size, sync_task_id,
+               sync_module_task_id, sync_status, parse_status, ready_time,
+               parse_time, error_message, create_time, update_time
+        FROM tb_ai_log_file_record
+        WHERE environment = #{environment}
+          <if test="systemCode != null and systemCode != ''">
+              AND system_code = #{systemCode}
+          </if>
+          <if test="logDate != null">
+              AND log_date = #{logDate}
+          </if>
+          AND file_type = #{fileType}
+          AND sync_status = #{syncStatus}
+          AND parse_status = #{parseStatus}
+        ORDER BY log_date ASC, id ASC
+        LIMIT #{limit}
+    </select>
+</mapper>

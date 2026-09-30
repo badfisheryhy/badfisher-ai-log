@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.github.badfisher.ailog.persistence.cleanup.mapper.AiLogFileCleanupMapper">
+
+    <!-- 显式列映射，不依赖全局 map-underscore-to-camel-case 配置。 -->
+    <resultMap id="FileCleanupResultMap" type="io.github.badfisher.ailog.persistence.cleanup.entity.AiLogFileCleanupEntity">
+        <id column="id" property="id" />
+        <result column="file_record_id" property="fileRecordId" />
+        <result column="analysis_task_id" property="analysisTaskId" />
+        <result column="local_path" property="localPath" />
+        <result column="status" property="status" />
+        <result column="trigger_reason" property="triggerReason" />
+        <result column="scheduled_time" property="scheduledTime" />
+        <result column="deleting_time" property="deletingTime" />
+        <result column="deleted_time" property="deletedTime" />
+        <result column="retry_count" property="retryCount" />
+        <result column="next_retry_time" property="nextRetryTime" />
+        <result column="last_error_message" property="lastErrorMessage" />
+        <result column="manual_required" property="manualRequired" />
+        <result column="remark" property="remark" />
+        <result column="create_time" property="createTime" />
+        <result column="update_time" property="updateTime" />
+    </resultMap>
+
+    <!-- 清理任务认领候选：到期的 WAITING 或 RETRY_WAITING 记录，按 ID 升序限量扫描。 -->
+    <select id="selectClaimCandidates" resultMap="FileCleanupResultMap">
+        SELECT id, file_record_id, analysis_task_id, local_path, status,
+               trigger_reason, scheduled_time, deleting_time, deleted_time,
+               retry_count, next_retry_time, last_error_message, manual_required,
+               remark, create_time, update_time
+        FROM tb_ai_log_file_cleanup
+        WHERE (status = 'WAITING' AND scheduled_time &lt;= #{now})
+           OR (status = 'RETRY_WAITING' AND next_retry_time &lt;= #{now})
+        ORDER BY id ASC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

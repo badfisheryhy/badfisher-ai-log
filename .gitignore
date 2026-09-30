@@ -1,0 +1,16 @@
+**/target/
+.tools/
+.m2/
+.idea/
+*.iml
+runtime-data/
+.env
+.env.*
+!.env.example
+config/application-local.yml
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+.DS_Store

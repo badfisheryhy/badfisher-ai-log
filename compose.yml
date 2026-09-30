@@ -1,0 +1,43 @@
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: badfisher_ai_log
+      MYSQL_USER: badfisher
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Set DB_ROOT_PASSWORD in .env}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - '127.0.0.1:8080:8080'
+    environment:
+      SERVER_ADDRESS: 0.0.0.0
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_CONFIG_ADDITIONAL_LOCATION: file:/app/config/application-local.yml
+      DB_URL: jdbc:mysql://db:3306/badfisher_ai_log?useUnicode=true&characterEncoding=UTF-8&serverTimezone=UTC
+      DB_USERNAME: badfisher
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:?Set ADMIN_PASSWORD_HASH in .env}
+      AI_ENABLED: ${AI_ENABLED:-false}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+      LOG_ALLOWED_ROOT: /logs
+      LOG_TIMEZONE: ${LOG_TIMEZONE:-Asia/Shanghai}
+    volumes:
+      - ./config/application-local.yml:/app/config/application-local.yml:ro
+      - ${HOST_LOG_DIRECTORY:-./samples/logs}:/logs:ro
+      - app-data:/app/runtime-data
+volumes:
+  mysql-data:
+  app-data:

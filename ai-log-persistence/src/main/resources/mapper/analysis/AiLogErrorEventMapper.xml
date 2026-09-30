@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.github.badfisher.ailog.persistence.analysis.mapper.AiLogErrorEventMapper">
+
+    <!-- 统计单次分析任务命中的稳定 Issue 数（issue_group_id 非空去重计数）。 -->
+    <select id="countDistinctIssues" resultType="long">
+        SELECT COUNT(DISTINCT issue_group_id)
+        FROM tb_ai_log_error_event
+        WHERE analysis_task_id = #{analysisTaskId}
+    </select>
+
+    <!-- 当日有效 Event 驱动自动分析；仅处理未审核通过的待处理案件。 -->
+    <select id="selectAiTaskCandidates"
+            resultType="io.github.badfisher.ailog.persistence.analysis.mapper.AiLogErrorEventMapper$AiTaskCandidate">
+        SELECT DISTINCT event.issue_group_id AS issueGroupId
+        FROM tb_ai_log_error_event event
+        JOIN tb_ai_log_issue_group_governance governance
+          ON governance.issue_group_id = event.issue_group_id
+         AND governance.process_status = 'PENDING'
+         AND governance.review_status IN ('PENDING', 'REJECTED')
+        WHERE event.analysis_task_id = #{analysisTaskId}
+          AND event.log_date = #{logDate}
+          AND event.expected = 0
+          AND event.ai_required = 1
+          AND event.issue_group_id IS NOT NULL
+          AND NOT EXISTS (
+              SELECT 1
+              FROM tb_ai_log_ai_task_item item
+              JOIN tb_ai_log_analysis_task analysis ON analysis.id = item.analysis_task_id
+              WHERE item.issue_group_id = event.issue_group_id
+                AND item.rerun_operation_id IS NULL
+                AND analysis.log_date = #{logDate}
+          )
+        ORDER BY event.issue_group_id ASC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 复用入库评分，不重新评估正文；同分按ID降序，配合联合索引反向扫描。 -->
+    <sql id="groupEvidenceOrder">
+        ORDER BY event.sample_quality_score DESC, event.id DESC
+    </sql>
+
+    <!-- 已完成解析的事实才可成为分析输入；与批量引用查询使用相同的评分顺序。 -->
+    <select id="selectGroupEvidenceEvents"
+            resultType="io.github.badfisher.ailog.persistence.analysis.entity.AiLogErrorEventEntity">
+        SELECT event.*
+        FROM tb_ai_log_error_event event
+        JOIN tb_ai_log_analysis_task analysis ON analysis.id = event.analysis_task_id
+        WHERE event.issue_group_id = #{issueGroupId}
+          AND analysis.status = 'SUCCESS'
+          AND event.expected = 0
+          AND event.ai_required = 1
+        <include refid="groupEvidenceOrder"/>
+        LIMIT #{limit}
+    </select>
+
+    <!--
+        分析任务级聚合增量UPSERT：
+        首次INSERT保存代表样本；冲突时累计真实次数并扩展时间窗，
+        且仅当 incoming sample_quality_score 严格更高时整套替换代表样本快照。
+        sample_quality_score 的赋值必须放在最后：MySQL 按声明顺序求值，
+        前面所有 IF 条件读取的仍是替换前的原始评分。
+    -->
+    <insert id="upsertAggregates">
+        INSERT INTO tb_ai_log_error_event (
+            analysis_task_id, file_record_id, issue_group_id, environment, system_code,
+            module_code, log_date, aggregate_type, aggregate_key,
+            log_time, start_line, end_line, start_byte, end_byte, location_mode, truncated,
+            match_type, thread_name, trace_id, tid, request_id, logger_class, logger_method,
+            logger_line, exception_class, exception_message, root_cause_exception,
+            root_cause_message, business_class, business_method, business_line,
+            root_cause_category, matched_rule_id, expected,
+            ai_required, reason_code, trigger_channel, normalized_message, simplified_stack,
+            strict_fingerprint, stable_fingerprint, fingerprint_version, occurrence_count,
+            first_seen_time, last_seen_time, sample_content, sample_content_truncated,
+            sample_quality_score
+        ) VALUES
+        <foreach collection="events" item="event" separator=",">
+            (#{event.analysisTaskId}, #{event.fileRecordId}, #{event.issueGroupId},
+             #{event.environment}, #{event.systemCode}, #{event.moduleCode},
+             #{event.logDate}, #{event.aggregateType}, #{event.aggregateKey},
+             #{event.logTime},
+             #{event.startLine}, #{event.endLine},
+             #{event.startByte}, #{event.endByte}, #{event.locationMode}, #{event.truncated},
+             #{event.matchType}, #{event.threadName}, #{event.traceId}, #{event.tid},
+             #{event.requestId}, #{event.loggerClass}, #{event.loggerMethod}, #{event.loggerLine},
+             #{event.exceptionClass}, #{event.exceptionMessage}, #{event.rootCauseException},
+             #{event.rootCauseMessage}, #{event.businessClass}, #{event.businessMethod},
+             #{event.businessLine}, #{event.rootCauseCategory}, #{event.matchedRuleId},
+             #{event.expected}, #{event.aiRequired}, #{event.reasonCode},
+             #{event.triggerChannel}, #{event.normalizedMessage}, #{event.simplifiedStack},
+             #{event.strictFingerprint}, #{event.stableFingerprint}, #{event.fingerprintVersion},
+             #{event.occurrenceCount}, #{event.firstSeenTime}, #{event.lastSeenTime},
+             #{event.sampleContent}, #{event.sampleContentTruncated},
+             #{event.sampleQualityScore})
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+            occurrence_count = occurrence_count + VALUES(occurrence_count),
+            first_seen_time = COALESCE(LEAST(first_seen_time, VALUES(first_seen_time)), first_seen_time, VALUES(first_seen_time)),
+            last_seen_time = COALESCE(GREATEST(last_seen_time, VALUES(last_seen_time)), last_seen_time, VALUES(last_seen_time)),
+            matched_rule_id = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(matched_rule_id) ELSE matched_rule_id END,
+            log_time = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(log_time) ELSE log_time END,
+            start_line = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(start_line) ELSE start_line END,
+            end_line = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(end_line) ELSE end_line END,
+            start_byte = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(start_byte) ELSE start_byte END,
+            end_byte = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(end_byte) ELSE end_byte END,
+            location_mode = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(location_mode) ELSE location_mode END,
+            truncated = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(truncated) ELSE truncated END,
+            match_type = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(match_type) ELSE match_type END,
+            thread_name = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(thread_name) ELSE thread_name END,
+            trace_id = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(trace_id) ELSE trace_id END,
+            tid = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(tid) ELSE tid END,
+            request_id = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(request_id) ELSE request_id END,
+            logger_class = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(logger_class) ELSE logger_class END,
+            logger_method = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(logger_method) ELSE logger_method END,
+            logger_line = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(logger_line) ELSE logger_line END,
+            exception_class = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(exception_class) ELSE exception_class END,
+            exception_message = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(exception_message) ELSE exception_message END,
+            root_cause_exception = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(root_cause_exception) ELSE root_cause_exception END,
+            root_cause_message = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(root_cause_message) ELSE root_cause_message END,
+            business_class = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(business_class) ELSE business_class END,
+            business_method = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(business_method) ELSE business_method END,
+            business_line = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(business_line) ELSE business_line END,
+            trigger_channel = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(trigger_channel) ELSE trigger_channel END,
+            normalized_message = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(normalized_message) ELSE normalized_message END,
+            simplified_stack = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(simplified_stack) ELSE simplified_stack END,
+            strict_fingerprint = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(strict_fingerprint) ELSE strict_fingerprint END,
+            sample_content = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(sample_content) ELSE sample_content END,
+            sample_content_truncated = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(sample_content_truncated) ELSE sample_content_truncated END,
+            sample_quality_score = CASE WHEN VALUES(sample_quality_score) > sample_quality_score THEN VALUES(sample_quality_score) ELSE sample_quality_score END
+    </insert>
+
+    <select id="selectGroupEventStats"
+            resultType="io.github.badfisher.ailog.persistence.analysis.mapper.AiLogErrorEventMapper$GroupEventStats">
+        SELECT issue_group_id,
+               COALESCE(SUM(occurrence_count), 0) AS occurrence_count,
+               MIN(first_seen_time) AS first_seen_time,
+               MAX(last_seen_time) AS last_seen_time
+        FROM tb_ai_log_error_event
+        <choose>
+            <when test="issueGroupIds != null and issueGroupIds.size() > 0">
+                WHERE issue_group_id IN
+                <foreach collection="issueGroupIds" item="groupId" open="(" separator="," close=")">
+                    #{groupId}
+                </foreach>
+            </when>
+            <otherwise>WHERE 1 = 0</otherwise>
+        </choose>
+        GROUP BY issue_group_id
+    </select>
+
+    <select id="sumOccurrencesByAnalysisTask" resultType="long">
+        SELECT COALESCE(SUM(occurrence_count), 0)
+        FROM tb_ai_log_error_event
+        WHERE analysis_task_id = #{analysisTaskId}
+    </select>
+
+    <!-- Daily 查询独立于全历史证据路径，保持手工重跑语义。 -->
+    <select id="selectGroupDailyEvidenceReferences"
+            resultType="io.github.badfisher.ailog.persistence.analysis.entity.AiLogErrorEventEntity">
+        SELECT issue.id AS issue_group_id,
+               (SELECT event.id
+                FROM tb_ai_log_error_event event
+                JOIN tb_ai_log_analysis_task analysis ON analysis.id = event.analysis_task_id
+                WHERE event.issue_group_id = issue.id
+                  AND event.log_date = #{logDate}
+                  AND event.expected = 0
+                  AND event.ai_required = 1
+                  AND analysis.status = 'SUCCESS'
+                <include refid="groupEvidenceOrder"/>
+                LIMIT 1) AS id
+        FROM tb_ai_log_issue_group issue
+        <choose>
+            <when test="issueGroupIds != null and issueGroupIds.size() > 0">
+                WHERE issue.id IN
+                <foreach collection="issueGroupIds" item="groupId" open="(" separator="," close=")">
+                    #{groupId}
+                </foreach>
+            </when>
+            <otherwise>WHERE 1 = 0</otherwise>
+        </choose>
+    </select>
+
+    <select id="selectGroupDailyEvidenceEvents"
+            resultType="io.github.badfisher.ailog.persistence.analysis.entity.AiLogErrorEventEntity">
+        SELECT event.*
+        FROM tb_ai_log_error_event event
+        JOIN tb_ai_log_analysis_task analysis ON analysis.id = event.analysis_task_id
+        WHERE event.issue_group_id = #{issueGroupId}
+          AND event.log_date = #{logDate}
+          AND analysis.status = 'SUCCESS'
+          AND event.expected = 0
+          AND event.ai_required = 1
+        <include refid="groupEvidenceOrder"/>
+        LIMIT #{limit}
+    </select>
+
+    <!-- Daily 快照与样本采用相同的日期、分类和解析成功范围。 -->
+    <select id="selectGroupDailyEventStats"
+            resultType="io.github.badfisher.ailog.persistence.analysis.mapper.AiLogErrorEventMapper$GroupEventStats">
+        SELECT event.issue_group_id,
+               COALESCE(SUM(event.occurrence_count), 0) AS occurrence_count,
+               MIN(event.first_seen_time) AS first_seen_time,
+               MAX(event.last_seen_time) AS last_seen_time
+        FROM tb_ai_log_error_event event
+        JOIN tb_ai_log_analysis_task analysis ON analysis.id = event.analysis_task_id
+        WHERE event.log_date = #{logDate}
+          AND event.expected = 0
+          AND event.ai_required = 1
+          AND analysis.status = 'SUCCESS'
+        <choose>
+            <when test="issueGroupIds != null and issueGroupIds.size() > 0">
+                AND event.issue_group_id IN
+                <foreach collection="issueGroupIds" item="groupId" open="(" separator="," close=")">
+                    #{groupId}
+                </foreach>
+            </when>
+            <otherwise>AND 1 = 0</otherwise>
+        </choose>
+        GROUP BY event.issue_group_id
+    </select>
+
+</mapper>
