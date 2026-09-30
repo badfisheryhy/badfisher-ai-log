@@ -10,7 +10,7 @@ import io.github.badfisher.ailog.bootstrap.controller.request.SuppressRuleListRe
 import io.github.badfisher.ailog.bootstrap.controller.request.SuppressRuleRequest;
 import io.github.badfisher.ailog.bootstrap.controller.request.VersionedIdRequest;
 import io.github.badfisher.ailog.bootstrap.service.SuppressRuleManagementService;
-import io.github.badfisher.ailog.persistence.analysis.entity.AiLogSuppressRuleEntity;
+import io.github.badfisher.ailog.bootstrap.controller.response.SuppressRuleView;
 import io.github.badfisher.ailog.bootstrap.web.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
@@ -35,39 +35,40 @@ public class SuppressRuleController {
 
     @Operation(summary = "查询过滤规则")
     @PostMapping("/list")
-    public ApiResponse<List<AiLogSuppressRuleEntity>> list(
+    public ApiResponse<List<SuppressRuleView>> list(
             @Valid @RequestBody SuppressRuleListRequest request) {
-        return new ApiResponse<List<AiLogSuppressRuleEntity>>(
+        return new ApiResponse<List<SuppressRuleView>>(
                 service.list(request.getSystemCode(), request.getModuleCode(),
-                        request.getEnabled()));
+                        request.getEnabled()).stream()
+                        .map(SuppressRuleView::from).toList());
     }
 
     @Operation(summary = "查询过滤规则详情")
     @PostMapping("/detail")
-    public ApiResponse<AiLogSuppressRuleEntity> detail(@Valid @RequestBody IdRequest request) {
-        return new ApiResponse<AiLogSuppressRuleEntity>(service.detail(request.getId()));
+    public ApiResponse<SuppressRuleView> detail(@Valid @RequestBody IdRequest request) {
+        return new ApiResponse<SuppressRuleView>(SuppressRuleView.from(service.detail(request.getId())));
     }
 
     @Operation(summary = "新增过滤规则")
     @PostMapping("/create")
-    public ApiResponse<AiLogSuppressRuleEntity> create(
+    public ApiResponse<SuppressRuleView> create(
             @Valid @RequestBody SuppressRuleRequest request) {
-        return new ApiResponse<AiLogSuppressRuleEntity>(service.create(request), "过滤规则已创建");
+        return new ApiResponse<SuppressRuleView>(SuppressRuleView.from(service.create(request)), "过滤规则已创建");
     }
 
     @Operation(summary = "修改过滤规则")
     @PostMapping("/update")
-    public ApiResponse<AiLogSuppressRuleEntity> update(
+    public ApiResponse<SuppressRuleView> update(
             @Valid @RequestBody SuppressRuleRequest request) {
-        return new ApiResponse<AiLogSuppressRuleEntity>(service.update(request), "过滤规则已修改");
+        return new ApiResponse<SuppressRuleView>(SuppressRuleView.from(service.update(request)), "过滤规则已修改");
     }
 
     @Operation(summary = "启用或停用过滤规则")
     @PostMapping("/change-enabled")
-    public ApiResponse<AiLogSuppressRuleEntity> changeEnabled(
+    public ApiResponse<SuppressRuleView> changeEnabled(
             @Valid @RequestBody SuppressRuleEnabledRequest request) {
-        return new ApiResponse<AiLogSuppressRuleEntity>(
-                service.changeEnabled(request.getId(), request), "过滤规则启用状态已修改");
+        return new ApiResponse<SuppressRuleView>(
+                SuppressRuleView.from(service.changeEnabled(request.getId(), request)), "过滤规则启用状态已修改");
     }
 
     @Operation(summary = "软删除过滤规则")

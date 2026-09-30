@@ -47,4 +47,14 @@ java -jar ai-log-bootstrap/target/ai-log-bootstrap-0.1.0-SNAPSHOT.jar --spring.p
 
 仅使用合成示例和公开依赖。独立 Agent、业务前端、自动修改源码、向量库与多租户不在当前版本范围。源码快照固定、通用异步提交及本地报告下载仍是后续工作，详见设计文档的实施边界。
 
-项目尚未选择开源许可证，也未设置公开远程仓库；对外发布前须明确许可证和代码发布权利。当前工程不要视为已经完成开源发布。
+## 许可证与署名
+
+本项目采用 [Apache License 2.0](LICENSE)，作者署名为 **badfisher**，项目来源为 https://gitee.com/badfisher/badfisher-ai-log 。
+
+分发本项目或衍生作品时，须依 Apache-2.0 第 4 条提供许可证副本，保留相关版权与署名声明，并保留 [NOTICE](NOTICE) 中适用的项目来源说明；修改过的文件须注明修改。署名可按许可证要求放在随附 NOTICE、源码、文档或适用的第三方声明展示位置，无须强制在产品首页展示。
+
+建议在 README 或第三方依赖说明中使用：
+
+> 本项目使用 badfisher 的 badfisher-ai-log，采用 Apache-2.0 许可证。项目地址：https://gitee.com/badfisher/badfisher-ai-log
+
+正式发布前，代码所有者仍须确认全部代码与随附材料拥有合法发布权，第三方依赖遵循其各自许可证。

@@ -217,6 +217,8 @@ badfisher:
 
 Git 默认只接受 HTTPS。确需 HTTP 时显式设置 `badfisher.git-sync.allow-insecure-http: true`；Java 校验和内置脚本共同执行，禁止重定向及隐式协议降级。账号凭据的 `allowed-hosts` 限制继续有效。
 
+手工远程日志同步 API 默认关闭。需要时在 `badfisher` 下设置 `sync-api-enabled: true`，启用 `/api/log-sync/sync-module`、`/api/log-sync/sync-system` 和 `/api/log-sync/retry-task`；这些接口要求管理员认证，且仍受禁止人工同步环境配置约束。`sync-module` 只同步业务时区的昨日日志。本地 `/api/pipeline` 解析不依赖此开关。启用前需配置并验收 SSH 来源、凭据和远程同步缓存目录。
+
 同步来源使用 `MANUAL` / `SCHEDULER`，错误日志调度渠道统一为 `SCHEDULER`。`badfisher.sync.manual-sync-denied-environments` 控制禁止人工同步的环境，示例默认含 `prod`、`production`；设为空列表显式允许所有环境，管理员认证仍保留。跨实例锁使用 `lock-mode: DISTRIBUTED`，具体实现由装配层提供；旧 `REDIS` 配置需更新，不做静默回退。
 
 旧数据库中的 `XXL_JOB` / `SCHEDULE` 字符串不会被启动过程自动改写；本次不执行历史数据迁移。部署已有数据库时应先确认这些字段的消费方兼容性。

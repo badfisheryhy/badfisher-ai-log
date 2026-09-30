@@ -7,8 +7,6 @@ import java.util.Collections;
 import java.util.List;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
-import io.github.badfisher.ailog.persistence.analysis.entity.AiLogIssueGroupEntity;
-import io.github.badfisher.ailog.persistence.analysis.entity.AiLogIssueGroupGovernanceEntity;
 import io.github.badfisher.ailog.persistence.query.GroupQueryData.EventStats;
 import io.github.badfisher.ailog.persistence.query.GroupQueryData.ModuleOption;
 
@@ -159,9 +157,9 @@ public final class GroupQueryResponse {
     @Data
     @Schema(name = "GroupQueryResponse.Detail")
     public static class Detail {
-        private AiLogIssueGroupEntity group;
+        private IssueGroupView group;
         private AiResult ai;
-        private AiLogIssueGroupGovernanceEntity governance;
+        private GroupGovernanceView governance;
         private EventStats eventSummary;
     }
 

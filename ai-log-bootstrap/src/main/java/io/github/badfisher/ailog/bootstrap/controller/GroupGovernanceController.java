@@ -13,7 +13,7 @@ import io.github.badfisher.ailog.bootstrap.controller.request.GroupReasonRequest
 import io.github.badfisher.ailog.bootstrap.controller.request.GroupResolutionDaysRequest;
 import io.github.badfisher.ailog.bootstrap.controller.request.GroupReviewRequest;
 import io.github.badfisher.ailog.bootstrap.service.GroupGovernanceService;
-import io.github.badfisher.ailog.persistence.analysis.entity.AiLogIssueGroupGovernanceEntity;
+import io.github.badfisher.ailog.bootstrap.controller.response.GroupGovernanceView;
 import io.github.badfisher.ailog.bootstrap.web.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
@@ -79,96 +79,96 @@ public class GroupGovernanceController {
     /** 审核通过；成功后返回最新 Governance 及版本。 */
     @Operation(summary = "审核通过")
     @PostMapping("/review/approve")
-    public ApiResponse<AiLogIssueGroupGovernanceEntity> approveReview(
+    public ApiResponse<GroupGovernanceView> approveReview(
             @Valid @RequestBody GroupReviewRequest request) {
-        return new ApiResponse<AiLogIssueGroupGovernanceEntity>(service.approveReview(request));
+        return new ApiResponse<GroupGovernanceView>(GroupGovernanceView.from(service.approveReview(request)));
     }
 
     /** 审核驳回；成功后返回最新 Governance 及版本。 */
     @Operation(summary = "审核驳回")
     @PostMapping("/review/reject")
-    public ApiResponse<AiLogIssueGroupGovernanceEntity> rejectReview(
+    public ApiResponse<GroupGovernanceView> rejectReview(
             @Valid @RequestBody GroupReviewRequest request) {
-        return new ApiResponse<AiLogIssueGroupGovernanceEntity>(service.rejectReview(request));
+        return new ApiResponse<GroupGovernanceView>(GroupGovernanceView.from(service.rejectReview(request)));
     }
 
     /** 忽略案件；成功后返回最新 Governance 及版本。 */
     @Operation(summary = "忽略问题")
     @PostMapping("/ignore")
-    public ApiResponse<AiLogIssueGroupGovernanceEntity> ignore(
+    public ApiResponse<GroupGovernanceView> ignore(
             @Valid @RequestBody GroupGovernanceRequest request) {
-        return new ApiResponse<AiLogIssueGroupGovernanceEntity>(service.ignore(request));
+        return new ApiResponse<GroupGovernanceView>(GroupGovernanceView.from(service.ignore(request)));
     }
 
     /** 指派责任人；成功后返回最新 Governance 及版本。 */
     @Operation(summary = "指派责任人")
     @PostMapping("/assign")
-    public ApiResponse<AiLogIssueGroupGovernanceEntity> assign(
+    public ApiResponse<GroupGovernanceView> assign(
             @Valid @RequestBody GroupAssignmentRequest request) {
-        return new ApiResponse<AiLogIssueGroupGovernanceEntity>(service.assign(request));
+        return new ApiResponse<GroupGovernanceView>(GroupGovernanceView.from(service.assign(request)));
     }
 
     /** 转派责任人；成功后返回最新 Governance 及版本。 */
     @Operation(summary = "转派责任人")
     @PostMapping("/reassign")
-    public ApiResponse<AiLogIssueGroupGovernanceEntity> reassign(
+    public ApiResponse<GroupGovernanceView> reassign(
             @Valid @RequestBody GroupAssignmentRequest request) {
-        return new ApiResponse<AiLogIssueGroupGovernanceEntity>(service.reassign(request));
+        return new ApiResponse<GroupGovernanceView>(GroupGovernanceView.from(service.reassign(request)));
     }
 
     /** 认领并开始处理；成功后返回最新 Governance 及版本。 */
     @Operation(summary = "认领并开始处理")
     @PostMapping("/claim")
-    public ApiResponse<AiLogIssueGroupGovernanceEntity> claim(
+    public ApiResponse<GroupGovernanceView> claim(
             @Valid @RequestBody GroupGovernanceRequest request) {
-        return new ApiResponse<AiLogIssueGroupGovernanceEntity>(service.claim(request));
+        return new ApiResponse<GroupGovernanceView>(GroupGovernanceView.from(service.claim(request)));
     }
 
     /** 取消认领；成功后返回最新 Governance 及版本。 */
     @Operation(summary = "取消认领")
     @PostMapping("/unclaim")
-    public ApiResponse<AiLogIssueGroupGovernanceEntity> unclaim(
+    public ApiResponse<GroupGovernanceView> unclaim(
             @Valid @RequestBody GroupGovernanceRequest request) {
-        return new ApiResponse<AiLogIssueGroupGovernanceEntity>(service.unclaim(request));
+        return new ApiResponse<GroupGovernanceView>(GroupGovernanceView.from(service.unclaim(request)));
     }
 
     /** 完成处理；成功后返回最新 Governance 及版本。 */
     @Operation(summary = "标记已解决")
     @PostMapping("/resolve")
-    public ApiResponse<AiLogIssueGroupGovernanceEntity> resolve(
+    public ApiResponse<GroupGovernanceView> resolve(
             @Valid @RequestBody GroupReasonRequest request) {
-        return new ApiResponse<AiLogIssueGroupGovernanceEntity>(service.resolve(request));
+        return new ApiResponse<GroupGovernanceView>(GroupGovernanceView.from(service.resolve(request)));
     }
 
     /** 验收处理结果；仅已解决案件可标记为已完成。 */
     @Operation(summary = "验收完成")
     @PostMapping("/complete")
-    public ApiResponse<AiLogIssueGroupGovernanceEntity> complete(
+    public ApiResponse<GroupGovernanceView> complete(
             @Valid @RequestBody GroupReasonRequest request) {
-        return new ApiResponse<AiLogIssueGroupGovernanceEntity>(service.complete(request));
+        return new ApiResponse<GroupGovernanceView>(GroupGovernanceView.from(service.complete(request)));
     }
 
     /** 重新打开；成功后返回最新 Governance 及版本。 */
     @Operation(summary = "重新打开")
     @PostMapping("/reopen")
-    public ApiResponse<AiLogIssueGroupGovernanceEntity> reopen(
+    public ApiResponse<GroupGovernanceView> reopen(
             @Valid @RequestBody GroupReasonRequest request) {
-        return new ApiResponse<AiLogIssueGroupGovernanceEntity>(service.reopen(request));
+        return new ApiResponse<GroupGovernanceView>(GroupGovernanceView.from(service.reopen(request)));
     }
 
     /** 修改问题类型和等级；成功后返回最新 Governance 及版本。 */
     @Operation(summary = "修改问题类型和等级")
     @PostMapping("/problem/update")
-    public ApiResponse<AiLogIssueGroupGovernanceEntity> updateProblem(
+    public ApiResponse<GroupGovernanceView> updateProblem(
             @Valid @RequestBody GroupProblemRequest request) {
-        return new ApiResponse<AiLogIssueGroupGovernanceEntity>(service.updateProblem(request));
+        return new ApiResponse<GroupGovernanceView>(GroupGovernanceView.from(service.updateProblem(request)));
     }
 
     /** 修改人工解决天数；成功后返回最新 Governance 及版本。 */
     @Operation(summary = "修改人工解决天数")
     @PostMapping("/resolution-days/update")
-    public ApiResponse<AiLogIssueGroupGovernanceEntity> updateResolutionDays(
+    public ApiResponse<GroupGovernanceView> updateResolutionDays(
             @Valid @RequestBody GroupResolutionDaysRequest request) {
-        return new ApiResponse<AiLogIssueGroupGovernanceEntity>(service.updateResolutionDays(request));
+        return new ApiResponse<GroupGovernanceView>(GroupGovernanceView.from(service.updateResolutionDays(request)));
     }
 }

@@ -1,5 +1,8 @@
 package io.github.badfisher.ailog.bootstrap.service;
 
+import io.github.badfisher.ailog.bootstrap.controller.response.IssueGroupView;
+import io.github.badfisher.ailog.bootstrap.controller.response.GroupGovernanceView;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
@@ -160,8 +163,8 @@ public class GroupQueryService {
         List<AiLogIssueGroupGovernanceEntity> states = mapper.governance(Collections.singletonList(group.getId()));
         AiLogIssueGroupGovernanceEntity state = requireGovernance(states.isEmpty() ? null : states.get(0));
         GroupQueryResponse.Detail result = new GroupQueryResponse.Detail();
-        result.setGroup(group);
-        result.setGovernance(state);
+        result.setGroup(IssueGroupView.from(group));
+        result.setGovernance(GroupGovernanceView.from(state));
         if (group.getCurrentAiItemId() != null) {
             AiLogAiTaskItemEntity item = currentResults(Collections.singletonList(group.getCurrentAiItemId()), true)
                     .get(group.getCurrentAiItemId());

@@ -1,5 +1,7 @@
 # Copy to application-local.yml. Supply the hash from PasswordHashTool via environment.
 badfisher:
+  # 手工远程日志同步 API；默认关闭，本地解析不需要启用。
+  sync-api-enabled: false
   security:
     accounts:
       - id: 1
