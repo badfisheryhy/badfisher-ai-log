@@ -516,6 +516,26 @@ class AiTaskJobServiceTest {
                 anyLong(), any(), anyLong(), any());
     }
 
+    @Test
+    void changingDefaultProviderDoesNotReroutePersistedOpenAiClaim() {
+        AiTaskClaim claim = prepareSuccessfulDispatch();
+        AiAnalysisProvider deepseek = mock(AiAnalysisProvider.class);
+        AiAnalysisProviderRegistry routes = new AiAnalysisProviderRegistry(Map.of(
+                AiAnalysisProviderRegistry.routeKey("openai", "gpt-5.6-sol"), provider,
+                AiAnalysisProviderRegistry.routeKey("deepseek", "deepseek-flash"), deepseek),
+                "deepseek", "deepseek-flash");
+        doReturn(leaseRenewal).when(leaseRenewalScheduler).scheduleAtFixedRate(
+                any(Runnable.class), anyLong(), anyLong(), eq(TimeUnit.SECONDS));
+        AiTaskJobService job = new AiTaskJobService(repository, routes, new AiEvidenceBuilder(),
+                new AiEvidenceSanitizer(new SensitiveLogSanitizer()), new EvidenceHashGenerator(),
+                new AiTaskBlameEnrichmentService(mock(AiTaskBlameRepository.class), mock(GitBlameTool.class)),
+                Runnable::run, leaseRenewalScheduler, 50, 3, 5, 180, "worker-1", CLOCK);
+        assertThat(job.dispatch().getSuccessCount()).isEqualTo(1);
+        verify(provider).analyze(any());
+        verify(deepseek, never()).analyze(any());
+        verify(repository).completeSuccess(eq(claim), eq(91L), any(), anyLong(), any());
+    }
+
     private AiTaskJobService service(Executor executor) {
         return service(executor, new AiEvidenceSanitizer(new SensitiveLogSanitizer()));
     }

@@ -8,6 +8,8 @@ import io.github.badfisher.ailog.bootstrap.integration.ai.FunctionCallingAnalysi
 import io.github.badfisher.ailog.bootstrap.integration.ai.OpenAiAnalysisProvider;
 import io.github.badfisher.ailog.bootstrap.integration.ai.OpenAiFunctionCallingAnalysisProvider;
 import io.github.badfisher.ailog.bootstrap.integration.ai.OpenAiResponsesClient;
+import io.github.badfisher.ailog.bootstrap.integration.ai.ResponsesClient;
+import io.github.badfisher.ailog.bootstrap.integration.ai.deepseek.DeepSeekResponsesClient;
 import io.github.badfisher.ailog.bootstrap.integration.git.GitWorkspacePathResolver;
 import io.github.badfisher.ailog.domain.ai.AiAnalysisProvider;
 import io.github.badfisher.ailog.domain.ai.AiAnalysisProviderRegistry;
@@ -33,7 +35,10 @@ public class AiProviderConfiguration {
             if (!provider.getValue().isEnabled()) {
                 continue;
             }
-            OpenAiResponsesClient client = new OpenAiResponsesClient(mapper, provider.getValue());
+            ResponsesClient client = switch (provider.getValue().getApiType()) {
+                case OPENAI_RESPONSES -> new OpenAiResponsesClient(mapper, provider.getValue());
+                case DEEPSEEK_RESPONSES -> new DeepSeekResponsesClient(mapper, provider.getValue());
+            };
             for (Map.Entry<String, AiAnalysisProperties.ModelProperties> model
                     : provider.getValue().getModels().entrySet()) {
                 if (!model.getValue().isEnabled()) {

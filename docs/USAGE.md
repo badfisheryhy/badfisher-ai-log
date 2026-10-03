@@ -159,6 +159,8 @@ OPENAI_MODEL=账号中可用且支持相应 Responses 能力的模型名称
 
 默认仅允许 HTTPS。本地模拟服务或可信内网 HTTP 必须显式设置 `badfisher.ai.providers.openai.allow-insecure-http: true`，该开关不会关闭 HTTPS 证书校验。
 
+DeepSeek 官方 Responses 接入使用独立配置和 Compose 叠加文件，见 [DeepSeek 接入与验证](DEEPSEEK.md)。原有 OpenAI 配置和启动命令保持有效。
+
 `OPENAI_BASE_URL` 不要带 `/responses`；客户端会追加一次。兼容服务必须支持 Responses 协议，仅支持 Chat Completions 的地址不能直接使用。普通分析要求 JSON 输出；工具分析还要求 function calling 与相应结构化输出能力。不固定模型名称，以账号实际权限与供应商支持为准。
 
 `badfisher.ai.providers.openai.models.<模型名称>.max-tokens` 可覆盖默认输出上限 2000。更换模型后创建新任务或显式重跑，不静默改写旧结果。示例：

@@ -45,12 +45,12 @@ public class OpenAiAnalysisProvider implements AiAnalysisProvider {
             "rootCause", "impact", "recommendation", "uncertainty", "confidence",
             "humanReviewRequired", "ruleSuggestion", "suggestedResolutionDays"));
 
-    private final OpenAiResponsesClient client;
+    private final ResponsesClient client;
     private final ObjectMapper objectMapper;
     private final String configuredProvider;
     private final String configuredModel;
 
-    public OpenAiAnalysisProvider(OpenAiResponsesClient client, ObjectMapper mapper,
+    public OpenAiAnalysisProvider(ResponsesClient client, ObjectMapper mapper,
             String provider, String model) {
         this.client = Objects.requireNonNull(client, "Responses client is required");
         objectMapper = Objects.requireNonNull(mapper, "ObjectMapper is required");

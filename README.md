@@ -1,15 +1,15 @@
 # badfisher-ai-log
 
-面向 Java 应用的日志分析后端：解析 ERROR、归类聚合异常、按需提取 INFO 上下文，再通过可配置的 OpenAI Responses API 分析原因。提供问题治理和任务查询 API，无业务前端。
+面向 Java 应用的日志分析后端：解析 ERROR、归类聚合异常、按需提取 INFO 上下文，再通过可配置的 Responses API 分析原因，支持 OpenAI 与 DeepSeek。提供问题治理和任务查询 API，无业务前端。
 
-当前版本 `0.1.0-SNAPSHOT`，JDK 21 单版本。工程已包含实现与自动化测试，尚未发布发行版。真实 MySQL、容器部署和真实 OpenAI 账号联调仍需完成发布验收。
+当前版本 `0.1.0-SNAPSHOT`，JDK 21 单版本。工程已包含实现与自动化测试，尚未发布发行版。真实 MySQL、容器部署和真实 OpenAI/DeepSeek 账号联调仍需完成发布验收。
 
 ## 能力
 
 - 常见 Spring Boot / Logback 文本、JSONL、自定义日志头正则、多行 Java 异常和 gzip 文件。
 - 日志文件名通过 glob 配置，不绑定某个系统名称；ERROR 与 INFO 分别选择文件。
 - ERROR 进入事件、聚合问题与治理数据；INFO 只在 AI 分析时按关联标识和时间窗口抽取，不建立全量 INFO 库。
-- 独立 Responses HTTP 客户端，可配置地址、密钥、模型、超时和重试；不依赖私有 AI Starter。
+- 独立 OpenAI / DeepSeek Responses HTTP 客户端，可配置地址、密钥、模型、超时和重试；不依赖私有 AI Starter。
 - AI 批次、单问题分析、尝试记录、证据快照、用量和失败状态持久化；源码只读工具循环可选。
 - BCrypt 本地账号、管理员接口、OpenAPI、Flyway 建表；默认只需应用和 MySQL。
 
@@ -36,6 +36,8 @@ java -jar ai-log-bootstrap/target/ai-log-bootstrap-0.1.0-SNAPSHOT.jar --spring.p
 ```
 
 默认地址 `http://127.0.0.1:8080`；API 文档 `/swagger-ui/index.html`，OpenAPI JSON `/v3/api-docs`。账号不提供默认密码。Windows PowerShell 设置环境变量使用 `$env:变量名='值'`；命令中的 Java `-D...` 参数在 PowerShell 中建议用单引号包裹。
+
+DeepSeek 配置、源码工具兼容和验收步骤见 [DeepSeek 接入](docs/DEEPSEEK.md)。
 
 完整流程见 [使用与部署](docs/USAGE.md)，包含 Compose、创建模块、示例解析、启用 AI、查询结果和排障。
 

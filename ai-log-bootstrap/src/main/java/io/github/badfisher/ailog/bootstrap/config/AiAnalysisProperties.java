@@ -47,12 +47,19 @@ public class AiAnalysisProperties implements org.springframework.beans.factory.I
         provider.getModels().computeIfAbsent(defaultModel, ignored -> new ModelProperties());
     }
 
+    public enum ApiType {
+        OPENAI_RESPONSES,
+        DEEPSEEK_RESPONSES
+    }
+
     /** 单个 AI 供应商的连接配置，API Key 不得写入日志。 */
     @Getter
     @Setter
     public static class ProviderProperties {
 
         private boolean enabled = true;
+        /** 默认保留既有 OpenAI 传输；DeepSeek 必须显式选用独立实现。 */
+        private ApiType apiType = ApiType.OPENAI_RESPONSES;
         private String baseUrl = "";
         private String apiKey = "";
         /** 仅在显式启用时允许明文 HTTP；不影响 HTTPS 证书校验。 */
@@ -74,6 +81,8 @@ public class AiAnalysisProperties implements org.springframework.beans.factory.I
 
         private boolean enabled = true;
         private int maxTokens = 2000;
+        /** 仅由 DeepSeek 适配器读取；空值采用上游默认，OpenAI 不发送此配置。 */
+        private String reasoningEffort;
 
     }
 }

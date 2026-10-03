@@ -1,0 +1,29 @@
+# Copy to application-deepseek-local.yml; load AFTER application-local.yml.
+# Model names are examples from the official Responses documentation; replace
+# BOTH default-model and the models map key when selecting another model.
+badfisher:
+  ai:
+    enabled: ${AI_ENABLED:false}
+    default-provider: deepseek
+    default-model: deepseek-flash
+    prompt-version: ai-issue-v4
+    providers:
+      # Keep enabled with its own key/models if existing OpenAI tasks must finish.
+      openai:
+        enabled: false
+      deepseek:
+        enabled: true
+        api-type: DEEPSEEK_RESPONSES
+        base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+        api-key: ${DEEPSEEK_API_KEY:}
+        allow-insecure-http: false
+        connect-timeout-seconds: 10
+        read-timeout-seconds: 90
+        max-attempts: 3
+        models:
+          deepseek-flash:
+            enabled: true
+            max-tokens: 4096
+            reasoning-effort: none
+    function-calling:
+      enabled: false

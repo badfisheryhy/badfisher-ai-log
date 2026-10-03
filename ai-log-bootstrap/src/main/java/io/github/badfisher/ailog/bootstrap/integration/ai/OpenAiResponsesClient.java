@@ -18,7 +18,7 @@ import io.github.badfisher.ailog.domain.ai.AiProviderException;
 import io.github.badfisher.ailog.domain.ai.AiProviderException.ErrorType;
 
 /** One Responses request per call, using Java 21 HTTP with no hidden application retries. */
-public final class OpenAiResponsesClient {
+public final class OpenAiResponsesClient implements ResponsesClient {
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;

@@ -48,7 +48,7 @@ public final class OpenAiFunctionCallingAnalysisProvider implements AiAnalysisPr
     private static final Set<String> NEED_CHANGE_VALUES = new HashSet<String>(Arrays.asList(
             "YES", "NO", "PARTIAL", "UNKNOWN"));
 
-    private final OpenAiResponsesClient responsesClient;
+    private final ResponsesClient responsesClient;
     private final ObjectMapper objectMapper;
     private final FunctionCallingAnalysisProperties properties;
     private final GitWorkspacePathResolver workspacePathResolver;
@@ -56,7 +56,7 @@ public final class OpenAiFunctionCallingAnalysisProvider implements AiAnalysisPr
     private final String modelCode;
 
     public OpenAiFunctionCallingAnalysisProvider(
-            OpenAiResponsesClient client, ObjectMapper mapper,
+            ResponsesClient client, ObjectMapper mapper,
             FunctionCallingAnalysisProperties configuredProperties,
             GitWorkspacePathResolver configuredWorkspacePathResolver,
             String configuredProvider, String configuredModel) {

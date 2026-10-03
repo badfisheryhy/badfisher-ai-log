@@ -46,10 +46,13 @@ class OpenAiResponsesClientTest {
         });
         server.start();
         try {
-            OpenAiResponsesClient client = new OpenAiResponsesClient(mapper, properties(server));
+            AiAnalysisProperties.ProviderProperties configured = properties(server);
+            configured.getModels().get("test-model").setReasoningEffort("high");
+            OpenAiResponsesClient client = new OpenAiResponsesClient(mapper, configured);
             JsonNode result = client.createResponse(mapper.createObjectNode().put("input", "synthetic evidence"), "test-model");
             assertThat(authorization.get()).isEqualTo("Bearer synthetic-test-key");
             assertThat(payload.get().path("model").asText()).isEqualTo("test-model");
+            assertThat(payload.get().has("reasoning")).isFalse();
             assertThat(payload.get().path("store").asBoolean()).isFalse();
             assertThat(payload.get().path("stream").asBoolean()).isFalse();
             assertThat(payload.get().path("max_output_tokens").asInt()).isEqualTo(2000);

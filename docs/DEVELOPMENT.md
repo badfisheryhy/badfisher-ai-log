@@ -56,9 +56,11 @@ mvn clean verify
 
 ## 4. AI 和源码扩展
 
-`AiAnalysisProvider` 是应用侧端口，`AiProviderConfiguration` 根据配置注册实际 provider/model。Responses 传输在 OpenAiResponsesClient，不增加第二层睡眠重试；一次 Attempt 的重试由持久化状态机控制。
+`AiAnalysisProvider` 是应用侧端口，`AiProviderConfiguration` 根据配置注册实际 provider/model。Responses 传输通过独立 OpenAI/DeepSeek 客户端接入，不增加第二层睡眠重试；一次 Attempt 的重试由持久化状态机控制。
 
 新增供应商首先验证是否真的兼容 Responses 的请求、输出、usage、拒绝/截断与工具返回格式。仅兼容 Chat Completions 的服务需要独立适配，不能只改 base-url。
+
+DeepSeek 已提供独立 Responses 传输适配，配置和验证见 [DeepSeek 接入](DEEPSEEK.md)。`ResponsesClient` 仅作为 bootstrap 内的传输端口，领域端口仍是 `AiAnalysisProvider`；供应商差异不得进入任务状态机或 OpenAI 请求逻辑。
 
 普通输出严格校验枚举/长度/类型/未知字段；不能依赖模型“通常会遵守”。变更 prompt 或结构化 schema 时同步版本、结果解析器、证据序列化与合同测试。记录实际模型和请求标识，不把用量缺失补成已知零消耗。
 

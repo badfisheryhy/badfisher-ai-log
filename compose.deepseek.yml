@@ -1,0 +1,10 @@
+# Use with: docker compose -f compose.yml -f compose.deepseek.yml ...
+# Requires config/application-local.yml and config/application-deepseek-local.yml.
+services:
+  app:
+    environment:
+      SPRING_CONFIG_ADDITIONAL_LOCATION: file:/app/config/application-local.yml,file:/app/config/application-deepseek-local.yml
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+    volumes:
+      - ./config/application-deepseek-local.yml:/app/config/application-deepseek-local.yml:ro
