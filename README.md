@@ -4,6 +4,8 @@
 
 当前版本 `0.1.0-SNAPSHOT`，JDK 21 单版本。工程已包含实现与自动化测试，尚未发布发行版。真实 MySQL、容器部署和真实 OpenAI/DeepSeek 账号联调仍需完成发布验收。
 
+源码已公开发布到 [GitHub](https://github.com/badfisheryhy/badfisher-ai-log) 和 [Gitee](https://gitee.com/badfisher/badfisher-ai-log)，采用 Apache-2.0 + NOTICE。仓库公开与正式发行版发布分别记录；当前可克隆源码构建使用。
+
 后续其他模型我也会尝试，可以当作一个干净的基础模型框架大家自行组合这样子，希望能改大家带来一些启发或者便利。
 
 ## 能力

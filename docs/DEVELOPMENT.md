@@ -113,18 +113,20 @@ mvn -pl ai-log-bootstrap -am test -Dtest=AiPipelineIntegrationTest -Dsurefire.fa
 | 构建 | JDK21 的 clean verify、测试统计和可执行 JAR |
 | API | 未认证/无权、正确请求、错误参数、查询、并发版本冲突 |
 | MySQL | 空库 Flyway、完整解析与 AI 持久化、重启恢复及重复触发 |
-| OpenAI | 显式授权的测试账号，普通分析、拒绝、限流、超时、工具循环、用量与脱敏 |
+| OpenAI / DeepSeek | 分别使用显式授权的测试账号，验证普通分析、拒绝、限流、超时、工具循环、用量与脱敏 |
 | 日志 | 文本、JSONL、自定义格式、gzip、日期、轮转、INFO 上限及计数守恒 |
 | 部署 | JAR、Compose、目录权限、重启、数据保留和备份恢复 |
 | 治理 | 单项审核、认领/指派、解决/验收/重开、新事件不覆盖状态 |
 | 可选集成 | 实际启用的 SSH/Git/Loki/对象存储/通知逐项验收 |
 | 发布内容 | 许可证及代码发布权利、公共依赖、无专属数据/密钥/机器路径、无历史仓库信息 |
 
-当前已提供实现不等于上述每项已验收。真实 MySQL、OpenAI、Compose 和可选外部服务尚未在交付环境完成验证；未发布公共仓库、镜像或 Maven 包。
+源码已公开发布到 [GitHub](https://github.com/badfisheryhy/badfisher-ai-log) 和 [Gitee](https://gitee.com/badfisher/badfisher-ai-log)，已加入 Apache-2.0 LICENSE 和 NOTICE。当前已提供实现不等于上述每项已验收：真实 MySQL、OpenAI/DeepSeek、Compose 和可选外部服务尚未在交付环境完成验证；正式发行版、镜像或 Maven 包尚未发布。
 
 ## 7. 0.1.0 收尾与后续开发
 
-0.1.0 收尾范围固定为：Controller 使用 DTO/View 返回治理、过滤规则和问题详情；补齐 `sync-api-enabled` 示例与使用说明；采用 Apache-2.0 + NOTICE，并由代码所有者确认发布权。数据库实体新增字段不得自动暴露给 API，AI 活动执行指针和内部状态锁不进入问题详情。代码发布权未确认前，不标记完成开源发布。
+已完成的收尾项：Controller 使用 DTO/View 返回治理、过滤规则和问题详情；补齐 `sync-api-enabled` 示例与使用说明；加入 Apache-2.0 LICENSE 和 NOTICE；将源码上传至 GitHub 和 Gitee 公开仓库。
+
+持续保留的边界：数据库实体新增字段不得自动暴露给 API，AI 活动执行指针和内部状态锁不进入问题详情；新增或引入代码仍需确认发布权及许可证兼容性。仓库公开不代表正式发行版或完整环境验收已经完成。
 
 后续能力按以下顺序推进：
 
@@ -132,7 +134,7 @@ mvn -pl ai-log-bootstrap -am test -Dtest=AiPipelineIntegrationTest -Dsurefire.fa
 2. 完善固定 commit 源码快照和证据引用验证。
 3. 将 parse/dispatch 包装为持久化通用异步操作，保留现有状态机与失败可追踪性。
 4. 补齐本地报告存储/受保护下载，以及所选调度器装配；日志目录根白名单已实现，继续保留路径逃逸和空根拒绝测试。
-5. 完成许可证、贡献流程和发行说明后发布首个版本。
+5. 补齐贡献流程和发行说明，通过发布验收后创建版本标签并发布首个正式发行版；保留已有 LICENSE 和 NOTICE。
 6. 再评估独立 Agent/前端需求，避免提前增加部署组件。
 
 每一步根据具体变更更新相应使用或设计文档；不生成无意义的工作量报告。提交说明必须区分静态检查、编译、自动化测试、真实环境验收与正式发布。
